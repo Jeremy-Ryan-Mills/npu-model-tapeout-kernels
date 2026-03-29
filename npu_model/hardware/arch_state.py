@@ -31,7 +31,7 @@ class ArchState:
             torch.zeros(self.cfg.wb_width, dtype=torch.uint8)
             for _ in range(self.cfg.num_wb_registers)
         ]
-        self.flags: list[bool] = [False] * 3
+        self.flags: list[bool] = [False] * 16
 
     def reset(self) -> None:
         for i in range(len(self.xrf)):
