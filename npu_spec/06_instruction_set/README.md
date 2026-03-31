@@ -62,10 +62,10 @@ for `m`, `e`, or MXU-local state; this card uses the conservative convention
 | `mxu0.w1` | `-` | MXU0 FP8 weight slot 1 | Caller |
 | `mxu1.w0` | `-` | MXU1 FP8 weight slot 0 | Caller |
 | `mxu1.w1` | `-` | MXU1 FP8 weight slot 1 | Caller |
-| `mxu0.acc0` | `-` | MXU0 local `64 x 64 BF16` accumulation buffer 0 | Caller |
-| `mxu0.acc1` | `-` | MXU0 local `64 x 64 BF16` accumulation buffer 1 | Caller |
-| `mxu1.acc0` | `-` | MXU1 local `64 x 64 BF16` accumulation buffer 0 | Caller |
-| `mxu1.acc1` | `-` | MXU1 local `64 x 64 BF16` accumulation buffer 1 | Caller |
+| `mxu0.acc0` | `-` | MXU0 local `32 x 32 BF16` accumulation buffer 0 | Caller |
+| `mxu0.acc1` | `-` | MXU0 local `32 x 32 BF16` accumulation buffer 1 | Caller |
+| `mxu1.acc0` | `-` | MXU1 local `32 x 32 BF16` accumulation buffer 0 | Caller |
+| `mxu1.acc1` | `-` | MXU1 local `32 x 32 BF16` accumulation buffer 1 | Caller |
 | `dma.base` | `-` | DMA base address | Caller |
 
 ## 2. Core Instruction Formats
