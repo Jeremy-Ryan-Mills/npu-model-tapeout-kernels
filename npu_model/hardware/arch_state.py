@@ -3,6 +3,28 @@ from ..logging.logger import Logger
 from .config import ArchStateConfig
 
 
+def _int_to_le_bytes(data, length) -> torch.Tensor:
+    type_map = {1: torch.uint8, 2: torch.int16, 4: torch.int32}
+
+    if length not in type_map:
+        raise ValueError("Length must be 1, 2, or 4 bytes.")
+
+    return torch.tensor([data], dtype=type_map[length]).view(torch.uint8).clone()
+
+
+def _le_bytes_to_int(tensor):
+    length = tensor.numel()
+    type_map = {1: torch.uint8, 2: torch.int16, 4: torch.int32}
+
+    if length not in type_map:
+        raise ValueError("Tensor length must be 1, 2, or 4 bytes.")
+
+    raw_val = tensor.contiguous().view(type_map[length]).item()
+
+    masks = {1: 0xFF, 2: 0xFFFF, 4: 0xFFFFFFFF}
+    return raw_val & masks[length]
+
+
 class ArchState:
     def __init__(
         self,
@@ -16,7 +38,8 @@ class ArchState:
         self.reset()
 
     def initialize_buffers(self) -> None:
-        self.mem: torch.Tensor = torch.zeros(self.cfg.memory_size, dtype=torch.uint8)
+        self.dram: torch.Tensor = torch.zeros(self.cfg.memory_size, dtype=torch.uint8)
+        self.vmem: torch.Tensor = torch.zeros(self.cfg.vmem_size, dtype=torch.uint8)
         self.xrf: list[int] = [0] * self.cfg.num_x_registers
         self.mrf: list[torch.Tensor] = [
             torch.zeros(self.cfg.mrf_depth * self.cfg.mrf_width, dtype=torch.uint8)
@@ -42,6 +65,7 @@ class ArchState:
             torch.zeros((self.cfg.mrf_depth, acc_cols), dtype=torch.bfloat16)
             for _ in range(self.cfg.num_wb_registers)
         ]
+        self.base: int = 0x80000000  # dram base
         self.flags: list[bool] = [False] * 8
 
     def reset(self) -> None:
@@ -85,6 +109,9 @@ class ArchState:
         self.erf[rd] = value & 0xFF
         if self.logger:
             self.logger.log_arch_value("erf", rd, value & 0xFF)
+
+    def read_erf(self, rs: int) -> int:
+        return self.erf[rs]
 
     def read_xrf(self, rs: int) -> int:
         return self.xrf[rs]
@@ -229,19 +256,37 @@ class ArchState:
     def read_acc_bf16(self, unit: str, ws: int) -> torch.Tensor:
         return self.acc[unit][ws].clone()
 
-    def write_memory(self, base: int, data: torch.Tensor) -> None:
+    def write_dram(self, offset: int, data: torch.Tensor) -> None:
+        data = data.flatten()
+        address = (self.base << 32) | offset
+        assert (
+            address < offset + data.numel() <= self.cfg.dram_size
+        ), f"Memory write out of bounds: {address} + {data.numel()} > {self.cfg.dram_size}"
+        self.dram[address : address + data.numel()] = data
+
+    def read_dram(self, offset: int, length: int) -> torch.Tensor:
+        address = (self.base << 32) | offset
+        assert (
+            address + length <= self.cfg.dram_size
+        ), f"Memory read out of bounds: {address} + {length} > {self.cfg.dram_size}"
+        return self.dram[address : address + length]
+
+    def write_vmem(self, base: int, offset: int, data: torch.Tensor) -> None:
         data = data.flatten()
         # print(f"Writing {data.numel()} bytes to memory at base {base}")
         assert (
-            base + data.numel() <= self.cfg.memory_size
-        ), f"Memory write out of bounds: {base} + {data.numel()} > {self.cfg.memory_size}"
-        self.mem[base : base + data.numel()] = data
+            base + offset + data.numel() <= self.cfg.vmem_size
+        ), f"Memory write out of bounds: {base} + {data.numel()} > {self.cfg.vmem_size}"
+        self.vmem[base : base + data.numel()] = data
 
-    def read_memory(self, base: int, length: int) -> torch.Tensor:
+    def read_vmem(self, base: int, offset: int, length: int) -> torch.Tensor:
         assert (
-            base + length <= self.cfg.memory_size
-        ), f"Memory read out of bounds: {base} + {length} > {self.cfg.memory_size}"
-        return self.mem[base : base + length]
+            base + offset + length <= self.cfg.dram_size
+        ), f"Memory read out of bounds: {base} + {length} > {self.cfg.vmem_size}"
+        return self.vmem[base : base + length]
+
+    def write_base(self, value: int):
+        self.base = value
 
     def set_flag(self, flag: int) -> None:
         self.flags[flag] = True

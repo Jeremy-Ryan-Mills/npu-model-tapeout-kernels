@@ -19,8 +19,10 @@ class ArchStateConfig:
     """ Number of matrix registers. """
     num_wb_registers: int
     """ Number of weight buffer entries. """
-    memory_size: int
-    """ Size of memory in bytes. """
+    dram_size: int
+    """ Size of dram in bytes. """
+    vmem_size: int
+    """ Size of vmem in bytes. """
 
 
 class HardwareConfig:

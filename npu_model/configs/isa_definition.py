@@ -1,7 +1,11 @@
+from dis import Instruction
+from re import S
+
 import torch
 
 from typing import Any
 from npu_model.hardware import dma
+from npu_model.hardware import arch_state
 from npu_model.isa import (
     DmaArgs,
     MatrixArgs,
@@ -15,14 +19,15 @@ from npu_model.hardware.arch_state import ArchState
 from npu_model.software import instruction
 
 
-"""
-Scalar operations
-"""
-
 PIPELINE_LATENCY = 2
 
 # Mask for 64-bit unsigned comparison (RISC-V RV64)
 _MASK64 = 0xFFFFFFFFFFFFFFFF
+
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
 
 
 def _sign_extend(value: int, length: int):
@@ -31,6 +36,60 @@ def _sign_extend(value: int, length: int):
         value -= 1 << length
 
     return value & 0xFFFFFFFF
+
+
+def _tensor_register_bytes(state: ArchState) -> int:
+    return state.cfg.mrf_depth * state.cfg.mrf_width // torch.uint8.itemsize
+
+
+def _vls_base_register(args: VectorArgs) -> int:
+    if hasattr(args, "rs1"):
+        return args.rs1
+    else:
+        raise KeyError("vload/vstore requires rs1")
+
+
+def _vls_offset(args: VectorArgs) -> int:
+    if hasattr(args, "offset"):
+        return args.offset
+    else:
+        raise KeyError("no offset provided")
+
+
+def _vls_address(state: ArchState, args: VectorArgs) -> int:
+    return state.read_xrf(_vls_base_register(args)) + (_vls_offset(args) << 5)
+
+
+def _acc_dest_index(args: VectorArgs) -> int:
+    if hasattr(args, "vd"):
+        return args.vd
+    raise KeyError("MXU local write requires a destination accumulator selector")
+
+
+def _acc_source_index(args: Any) -> int:
+    if hasattr(args, "vs2"):
+        return args.vs2
+    if hasattr(args, "vs1"):
+        return args.vs1
+    if hasattr(args, "vd"):
+        return args.vd
+    raise KeyError("MXU local read requires an accumulator selector")
+
+
+def _vmatmul(state: ArchState, unit: str, args: MatrixArgs, accumulate: bool) -> None:
+    activation_fp16 = state.read_mrf_fp8(args.vs1).to(torch.float16)
+    weight_fp16 = state.read_wb_fp8(unit, args.vs2).to(torch.float16)
+    result_fp16 = activation_fp16 @ weight_fp16
+    if accumulate:
+        result_fp16 = result_fp16 + state.read_acc_bf16(unit, _acc_dest_index(args)).to(
+            torch.float16
+        )
+    state.write_acc_bf16(unit, _acc_dest_index(args), result_fp16.to(torch.bfloat16))
+
+
+# =============================================================================
+# Instructions Matching README Specification
+# =============================================================================
 
 
 @instr("lb", instruction_type=InstructionType.SCALAR.I)
@@ -74,8 +133,33 @@ def seli(state: ArchState, args: ScalarArgs):
     state.write_erf(args.rd, state.read_memory(args.imm))
 
 
-@instr("delay", instruction_type=InstructionType.SCALAR)
-def delay(state: ArchState, args: ScalarArgs) -> None:
+@instr("vload", instruction_type=InstructionType.VECTOR)
+def vload(state: ArchState, args: VectorArgs) -> None:
+    """
+    Load one full tensor register from VMEM.
+    """
+    base = _vls_address(state, args)
+    print(base)
+    data = state.read_memory(base, _tensor_register_bytes(state)).to(torch.uint8)
+    state.write_mrf_u8(args.vd, data)
+
+
+@instr("vstore", instruction_type=InstructionType.VECTOR)
+def vstore(state: ArchState, args: VectorArgs) -> None:
+    """
+    Store one full tensor register to VMEM.
+    """
+    base = _vls_address(state, args)
+    register_index = getattr(
+        args, "vd", getattr(args, "rs2", getattr(args, "vs1", None))
+    )
+    print(base)
+    data = state.mrf[register_index].view(torch.uint8)
+    state.write_memory(base, data)
+
+
+@instr("fence", instruction_type=InstructionType.SCALAR.I)
+def fence(state: ArchState, args: ScalarArgs) -> None:
     pass
 
 
@@ -124,6 +208,26 @@ def ori(state: ArchState, args: ScalarArgs) -> None:
 @instr("andi", instruction_type=InstructionType.SCALAR.I)
 def andi(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] & args.imm)
+
+
+@instr("auipc", instruction_type=InstructionType.SCALAR)
+def auipc(state: ArchState, args: ScalarArgs) -> None:
+    state.write_xrf(args.rd, (args.imm << 20) & 0xFFFFFFFF + state.pc)
+
+
+@instr("sb", instruction_type=InstructionType.SCALAR.S)
+def sb(state: ArchState, args: ScalarArgs) -> None:
+    state.write_memory(args.rs1 + args.imm, state.read_xrf(args.rs1) & 0xFF)
+
+
+@instr("sh", instruction_type=InstructionType.SCALAR.S)
+def sh(state: ArchState, args: ScalarArgs) -> None:
+    state.write_memory(args.rs1 + args.imm, state.read_xrf(args.rs1) & 0xFFFF)
+
+
+@instr("sw", instruction_type=InstructionType.SCALAR.S)
+def sw(state: ArchState, args: ScalarArgs) -> None:
+    state.write_memory(args.rs1 + args.imm, state.read_xrf(args.rs1) & 0xFFFFFFFF)
 
 
 @instr("add", instruction_type=InstructionType.SCALAR.R)
@@ -184,11 +288,127 @@ def lui(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, (args.imm << 12) & _MASK64)
 
 
-@instr("jal", instruction_type=InstructionType.SCALAR.J)
-def jal(state: ArchState, args: ScalarArgs) -> None:
-    state.set_npc(
-        state.pc + args.imm - PIPELINE_LATENCY
-    )  # FIXME: this is a hack to compensate for the IF->EX delay
+@instr("vadd.bf16", instruction_type=InstructionType.VECTOR)
+def vadd_bf16(state: ArchState, args: VectorArgs) -> None:
+    a = state.read_mrf_bf16(args.vs1)
+    b = state.read_mrf_bf16(args.vs2)
+    state.write_mrf_bf16(args.vd, (a + b).to(torch.bfloat16))
+
+
+@instr("vredsum.bf16", instruction_type=InstructionType.VECTOR)
+def vredsum_bf16(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    summed = x.sum(dim=0)
+    result = torch.zeros(x.shape)
+    result[0:,] = summed
+    state.write_mrf_bf16(result)
+
+
+@instr("vsub.bf16", instruction_type=InstructionType.VECTOR)
+def vsub_bf16(state: ArchState, args: VectorArgs) -> None:
+    a = state.read_mrf_bf16(args.vs1)
+    b = state.read_mrf_bf16(args.vs2)
+    state.write_mrf_bf16(args.vd, (a - b).to(torch.bfloat16))
+
+
+@instr("vmin.bf16", instruction_type=InstructionType.VECTOR)
+def vmin_bf16(state: ArchState, args: VectorArgs) -> None:
+    pass  # TODO: implementation missing in original
+
+
+@instr("vmax.bf16", instruction_type=InstructionType.VECTOR)
+def vmax_bf16(state: ArchState, args: VectorArgs) -> None:
+    pass  # TODO: implementation missing in original
+
+
+@instr("vmul.bf16", instruction_type=InstructionType.VECTOR)
+def vmul_bf16(state: ArchState, args: VectorArgs) -> None:
+    a = state.read_mrf_bf16(args.vs1)
+    b = state.read_mrf_bf16(args.vs2)
+    result = (a * b).to(torch.bfloat16)
+    state.write_mrf_bf16(args.vd, result)
+
+
+@instr("vmov", instruction_type=InstructionType.VECTOR)
+def vmov(state: ArchState, args: VectorArgs) -> None:
+    state.write_mrf_bf16(args.vd, state.read_mrf_bf16(args.vs1))
+
+
+@instr("vrecip.bf16", instruction_type=InstructionType.VECTOR)
+def vrecip_bf16(state: ArchState, args: VectorArgs) -> None:
+    state.write_mrf_bf16(args.vd, 1.0 / state.read_mrf_bf16(args.vs1))
+
+
+@instr("vexp", instruction_type=InstructionType.VECTOR)
+def vexp(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    state.write_mrf_bf16(args.vd, torch.exp(x).to(torch.bfloat16))
+
+
+@instr("vpack.bf16.fp8", instruction_type=InstructionType.VECTOR)
+def vpack_bf16_fp8(state: ArchState, args: VectorArgs) -> None:
+    assert args.vs1 != state.cfg.num_m_registers - 1
+
+    scale = state.read_erf(args.es1)
+
+    reg_low = state.read_mrf_bf16(args.vs1)
+    reg_high = state.read_mrf_bf16(args.vs1 + 1)
+    combined_bf16 = torch.cat([reg_low, reg_high], dim=1)
+
+    quantized_fp8 = (combined_bf16 * scale).to(torch.float8_e4m3fn)
+
+    state.write_mrf_fp8(args.vd, quantized_fp8)
+
+
+@instr("vunpack.fp8.bf16", instruction_type=InstructionType.VECTOR)
+def vunpack_fp8_bf16(state: ArchState, args: VectorArgs) -> None:
+    assert args.vd != state.cfg.num_m_registers - 1
+
+    scale = state.read_erf(args.es1)
+
+    source_fp8 = state.read_mrf_fp8(args.vs1)
+    dequantized_bf16 = source_fp8.to(torch.bfloat16)
+
+    scaled_bf16 = dequantized_bf16 / scale
+
+    reg_low, reg_high = torch.chunk(scaled_bf16, chunks=2, dim=1)
+    state.write_mrf_bf16(args.vd, reg_low)
+    state.write_mrf_bf16(args.vd + 1, reg_high)
+
+
+@instr("vrelu", instruction_type=InstructionType.VECTOR)
+def vrelu(state: ArchState, args: VectorArgs) -> None:
+    state.write_mrf_bf16(args.vd, torch.relu(state.read_mrf_bf16(args.vs1)))
+
+
+@instr("vli.all", instruction_type=InstructionType.VECTOR)
+def vli_all(state: ArchState, args: VectorArgs) -> None:
+    shape = state.read_mrf_bf16(0).shape
+    state.write_mrf_bf16(args.vd, torch.full(shape, args.imm, dtype=torch.bfloat16))
+
+
+@instr("vli.row", instruction_type=InstructionType.VECTOR)
+def vli_row(state: ArchState, args: VectorArgs) -> None:
+    shape = state.read_mrf_bf16(0).shape
+    x = torch.zeros(shape, dtype=torch.bfloat16)
+    x[0, :] = args.imm
+    state.write_mrf_bf16(args.vd, x)
+
+
+@instr("vli.col", instruction_type=InstructionType.VECTOR)
+def vli_col(state: ArchState, args: VectorArgs) -> None:
+    shape = state.read_mrf_bf16(0).shape
+    x = torch.zeros(shape, dtype=torch.bfloat16)
+    x[:, 0] = args.imm
+    state.write_mrf_bf16(args.vd, x)
+
+
+@instr("vli.one", instruction_type=InstructionType.VECTOR)
+def vli_one(state: ArchState, args: VectorArgs) -> None:
+    shape = state.read_mrf_bf16(0).shape
+    x = torch.zeros(shape, dtype=torch.bfloat16)
+    x[0, 0] = args.imm
+    state.write_mrf_bf16(args.vd, x)
 
 
 @instr("beq", instruction_type=InstructionType.SCALAR.B)
@@ -246,262 +466,63 @@ def bgeu(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-"""
-Matrix operations
-"""
-
-
-@instr("mv.mw", instruction_type=InstructionType.MATRIX)
-def mv_mw(state: ArchState, args: MatrixArgs) -> None:
-    """
-    Vector/matrix move from matrix registers to weight buffer.
-    """
-    # TODO: check register dimensions
-    state.write_wb_bf16("mxu0", args.rd, state.read_mrf_bf16(args.rs1))
-
-
-# @instr("matmul.mxu0", instruction_type=InstructionType.MATRIX.MATRIX_SYSTOLIC)
-# def matmul_mxu0(state: ArchState, args: MatrixArgs) -> None:
-#     """
-#     Matrix multiplication using MXU0, the systolic array.
-#     Weights are read from MXU0's weight buffer.
-#     """
-#     activation_fp8 = state.read_mrf_fp8(args.rs1)
-#     weight_fp8 = state.read_wb_fp8("mxu0", args.rs2)
-
-#     activation_fp16 = activation_fp8.to(torch.float16)
-#     weight_fp16 = weight_fp8.to(torch.float16)
-
-#     product_fp16 = activation_fp16 @ weight_fp16
-
-#     acc_bf16 = state.read_mrf_bf16_tile(args.rd)
-#     acc_fp16 = acc_bf16.to(torch.float16)
-
-#     accumulation_fp16 = acc_fp16 + product_fp16
-
-#     output_bf16 = accumulation_fp16.to(torch.bfloat16)
-#     state.write_mrf_bf16_tile(args.rd, output_bf16)
-
-
-# @instr("matmul.mxu1", instruction_type=InstructionType.MATRIX.MATRIX_IPT)
-# def matmul_mxu1(state: ArchState, args: MatrixArgs) -> None:
-#     activation_fp8 = state.read_mrf_fp8(args.rs1)
-#     weight_fp8 = state.read_wb_fp8("mxu1", args.rs2)
-
-#     activation_fp16 = activation_fp8.to(torch.float16)
-#     weight_fp16 = weight_fp8.to(torch.float16)
-
-#     product_fp16 = activation_fp16 @ weight_fp16
-
-#     acc_bf16 = state.read_mrf_bf16_tile(args.rd)
-#     acc_fp16 = acc_bf16.to(torch.float16)
-
-#     accumulation_fp16 = acc_fp16 + product_fp16
-
-#     output_bf16 = accumulation_fp16.to(torch.bfloat16)
-#     state.write_mrf_bf16_tile(args.rd, output_bf16)
-
-
-"""
-Vector operations (bfloat16)
-"""
-
-
-@instr("vadd", instruction_type=InstructionType.VECTOR)
-def vadd(state: ArchState, args: VectorArgs) -> None:
-    a = state.read_mrf_bf16(args.vs1)
-    b = state.read_mrf_bf16(args.vs2)
-    state.write_mrf_bf16(args.vd, (a + b).to(torch.bfloat16))
-
-
-@instr("vsub", instruction_type=InstructionType.VECTOR)
-def vsub(state: ArchState, args: VectorArgs) -> None:
-    a = state.read_mrf_bf16(args.vs1)
-    b = state.read_mrf_bf16(args.vs2)
-    state.write_mrf_bf16(args.vd, (a - b).to(torch.bfloat16))
-
-
-@instr("vmul", instruction_type=InstructionType.VECTOR)
-def vmul(state: ArchState, args: VectorArgs) -> None:
-    a = state.read_mrf_bf16(args.vs1)
-    b = state.read_mrf_bf16(args.vs2)
-    result = (a * b).to(torch.bfloat16)
-    state.write_mrf_bf16(args.vd, result)
-
-
-@instr("vsqrt", instruction_type=InstructionType.VECTOR)
-def vsqrt(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.sqrt(x).to(torch.bfloat16))
-
-
-@instr("vrcp", instruction_type=InstructionType.VECTOR)
-def vrcp(state: ArchState, args: VectorArgs) -> None:
-    """Elementwise reciprocal: 1 / x."""
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, (1.0 / x).to(torch.bfloat16))
-
-
-@instr("vexp", instruction_type=InstructionType.VECTOR)
-def vexp(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.exp(x).to(torch.bfloat16))
-
-
-@instr("vlog2", instruction_type=InstructionType.VECTOR)
-def vlog2(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.log2(x).to(torch.bfloat16))
-
-
-@instr("vexp2", instruction_type=InstructionType.VECTOR)
-def vexp2(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.exp2(x).to(torch.bfloat16))
-
-
-@instr("vsin", instruction_type=InstructionType.VECTOR)
-def vsin(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.sin(x).to(torch.bfloat16))
-
-
-@instr("vcos", instruction_type=InstructionType.VECTOR)
-def vcos(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.cos(x).to(torch.bfloat16))
-
-
-@instr("vtanh", instruction_type=InstructionType.VECTOR)
-def vtanh(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1)
-    state.write_mrf_bf16(args.vd, torch.tanh(x).to(torch.bfloat16))
-
-
-@instr("vreduce.sum", instruction_type=InstructionType.VECTOR)
-def vreduce_sum(state: ArchState, args: VectorArgs) -> None:
-    """Reduce sum over second-to-last (across columns) dimension. For (rows, cols) in, gives (1, cols) broadcast."""
-    x = state.read_mrf_bf16(args.vs1)
-    sum_val = torch.sum(x.float(), dim=0, keepdim=True)
-    out = sum_val.expand_as(x).to(torch.bfloat16)
-    state.write_mrf_bf16(args.vd, out)
-
-
-@instr("vrot.reduce.sum", instruction_type=InstructionType.VECTOR)
-def vrot_reduce_sum(state: ArchState, args: VectorArgs) -> None:
-    """Reduce sum over last (across rows) dimension. For (rows, cols) in, gives (rows, 1) broadcast."""
-    # TODO: implementation cost?
-    x = state.read_mrf_bf16(args.vs1)
-    sum_val = torch.sum(x.float(), dim=-1, keepdim=True)
-    out = sum_val.expand_as(x).to(torch.bfloat16)
-    state.write_mrf_bf16(args.vd, out)
-
-
-@instr("mv.mm", instruction_type=InstructionType.VECTOR)
-def mv_mm(state: ArchState, args: VectorArgs) -> None:
-    """
-    Vector/matrix move between matrix registers.
-    """
-    state.write_mrf_f32(args.rd, state.read_mrf_f32(args.rs1))
-
-
-"""
-Transpose operations
-"""
-
-
-@instr("vtrpose.h", instruction_type=InstructionType.VECTOR)
-def vtrpose_h(state: ArchState, args: VectorArgs) -> None:
-    """Transpose upper half: block = x[:, 0:half], write (cols, rows) with first half rows = block.T. Use with vtrpose.l + vadd for full transpose."""
-    # TODO: check correctness
-    x = state.read_mrf_bf16(args.vs1)
-    half = x.shape[0] // 2
-    block = x[0:half, :]
-    transposed = block.T.contiguous()
-    out = torch.zeros_like(x)
-    out[0:half, :] = transposed
-    state.write_mrf_bf16(args.vd, out)
-
-
-@instr("vtrpose.l", instruction_type=InstructionType.VECTOR)
-def vtrpose_l(state: ArchState, args: VectorArgs) -> None:
-    """Transpose lower half: block = x[:, half:], write (cols, rows) with second half rows = block.T. Use with vtrpose.h + vadd for full transpose."""
-    # TODO: check correctness
-    x = state.read_mrf_bf16(args.vs1)
-    half = x.shape[0] // 2
-    block = x[half:, :]
-    transposed = block.T.contiguous()
-    out = torch.zeros_like(x)
-    out[half:, :] = transposed
-    state.write_mrf_bf16(args.vd, out)
-
-
-"""
-Memory operations
-"""
-
-
-def _tensor_register_bytes(state: ArchState) -> int:
-    return state.cfg.mrf_depth * state.cfg.mrf_width // torch.uint8.itemsize
-
-
-def _vls_base_register(args: VectorArgs) -> int:
-    if hasattr(args, "rs1"):
-        return args.rs1
-    else:
-        raise KeyError("vload/vstore requires rs1")
-
-
-def _vls_offset(args: VectorArgs) -> int:
-    if hasattr(args, "offset"):
-        return args.offset
-    else:
-        raise KeyError("no offset provided")
-
-
-def _vls_address(state: ArchState, args: VectorArgs) -> int:
-    return state.read_xrf(_vls_base_register(args)) + (_vls_offset(args) << 5)
-
-
-def _acc_dest_index(args: VectorArgs) -> int:
-    if hasattr(args, "vd"):
-        return args.vd
-    raise KeyError("MXU local write requires a destination accumulator selector")
-
-
-def _acc_source_index(args: Any) -> int:
-    if hasattr(args, "vs2"):
-        return args.vs2
-    if hasattr(args, "vs1"):
-        return args.vs1
-    if hasattr(args, "vd"):
-        return args.vd
-    raise KeyError("MXU local read requires an accumulator selector")
-
-
-@instr("vload", instruction_type=InstructionType.VECTOR)
-def vload(state: ArchState, args: VectorArgs) -> None:
-    """
-    Load one full tensor register from VMEM.
-    """
-    base = _vls_address(state, args)
-    print(base)
-    data = state.read_memory(base, _tensor_register_bytes(state)).to(torch.uint8)
-    state.write_mrf_u8(args.vd, data)
-
-
-@instr("vstore", instruction_type=InstructionType.VECTOR)
-def vstore(state: ArchState, args: VectorArgs) -> None:
-    """
-    Store one full tensor register to VMEM.
-    """
-    base = _vls_address(state, args)
-    register_index = getattr(
-        args, "vd", getattr(args, "rs2", getattr(args, "vs1", None))
-    )
-    print(base)
-    data = state.mrf[register_index].view(torch.uint8)
-    state.write_memory(base, data)
+@instr("jalr", instruction_type=InstructionType.SCALAR.J)
+def jalr(state: ArchState, args: ScalarArgs) -> None:
+    state.write_xrf(args.rd, state.pc + 4)
+    state.set_npc(
+        state.read_xrf(args.rs1) + args.imm - PIPELINE_LATENCY
+    )  # FIXME: this is a hack to
+
+
+@instr("delay", instruction_type=InstructionType.SCALAR)
+def delay(state: ArchState, args: ScalarArgs) -> None:
+    pass
+
+
+@instr("vtrpose.xlu", instruction_type=InstructionType.VECTOR)
+def vtrpose_xlu(state: ArchState, args: VectorArgs) -> None:
+    assert args.vs1 != state.cfg.num_m_registers - 1
+    assert args.vd != state.cfg.num_m_registers - 1
+    reg_a = state.read_mrf_bf16(args.vs1)
+    reg_b = state.read_mrf_bf16(args.vs1 + 1)
+    combined = torch.stack([reg_a, reg_b])
+    reshaped = combined.view(2, 16, 2)
+    dst_0 = reshaped[:, :, 0].t().reshape(-1)
+    dst_1 = reshaped[:, :, 1].t().reshape(-1)
+    state.write_mrf_bf16(args.vd, dst_0)
+    state.write_mrf_bf16(args.vd + 1, dst_1)
+
+
+@instr("vreduce.max.xlu", instruction_type=InstructionType.VECTOR)
+def vreduce_max_xlu(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1).max(dim=1)
+    state.write_mrf_bf16(args.vd, x)
+
+
+@instr("vreduce.sum.xlu", instruction_type=InstructionType.VECTOR)
+def vreduce_sum_xlu(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1).sum(dim=1)
+    state.write_mrf_bf16(args.vd, x)
+
+
+@instr("jal", instruction_type=InstructionType.SCALAR.J)
+def jal(state: ArchState, args: ScalarArgs) -> None:
+    state.write_xrf(args.rd, state.pc + 4)
+    state.set_npc(
+        state.pc + args.imm - PIPELINE_LATENCY
+    )  # FIXME: this is a hack to compensate for the IF->EX delay
+
+
+# TODO: Implement 'ecall'
+@instr("ecall", instruction_type=InstructionType.SCALAR.I)
+def ecall(state: ArchState, args: ScalarArgs) -> None:
+    pass
+
+
+# TODO: Implement 'ebreak'
+@instr("ebreak", instruction_type=InstructionType.SCALAR.I)
+def ebreak(state: ArchState, args: ScalarArgs) -> None:
+    pass
 
 
 @instr("vmatpush.weight.mxu0", instruction_type=InstructionType.VECTOR)
@@ -576,31 +597,6 @@ def vmatpop_bf16_acc_mxu1(state: ArchState, args: VectorArgs) -> None:
     )
 
 
-@instr("vmatpop.mxu0", instruction_type=InstructionType.VECTOR)
-def vmatpop_mxu0(state: ArchState, args: VectorArgs) -> None:
-    state.write_mrf_bf16_tile(
-        args.vd, state.read_acc_bf16("mxu0", _acc_source_index(args))
-    )
-
-
-@instr("vmatpop.mxu1", instruction_type=InstructionType.VECTOR)
-def vmatpop_mxu1(state: ArchState, args: VectorArgs) -> None:
-    state.write_mrf_bf16_tile(
-        args.vd, state.read_acc_bf16("mxu1", _acc_source_index(args))
-    )
-
-
-def _vmatmul(state: ArchState, unit: str, args: MatrixArgs, accumulate: bool) -> None:
-    activation_fp16 = state.read_mrf_fp8(args.vs1).to(torch.float16)
-    weight_fp16 = state.read_wb_fp8(unit, args.vs2).to(torch.float16)
-    result_fp16 = activation_fp16 @ weight_fp16
-    if accumulate:
-        result_fp16 = result_fp16 + state.read_acc_bf16(unit, _acc_dest_index(args)).to(
-            torch.float16
-        )
-    state.write_acc_bf16(unit, _acc_dest_index(args), result_fp16.to(torch.bfloat16))
-
-
 @instr("vmatmul.mxu0", instruction_type=InstructionType.MATRIX.MATRIX_SYSTOLIC)
 def vmatmul_mxu0(state: ArchState, args: MatrixArgs) -> None:
     _vmatmul(state, "mxu0", args, accumulate=False)
@@ -619,6 +615,151 @@ def vmatmul_acc_mxu0(state: ArchState, args: MatrixArgs) -> None:
 @instr("vmatmul.acc.mxu1", instruction_type=InstructionType.MATRIX.MATRIX_IPT)
 def vmatmul_acc_mxu1(state: ArchState, args: MatrixArgs) -> None:
     _vmatmul(state, "mxu1", args, accumulate=True)
+
+
+# TODO: Implement 'dma.load.ch<N>'
+@instr("dma.load.ch<N>", instruction_type=InstructionType.DMA)
+def dma_load_ch_n(state: ArchState, args: DmaArgs) -> None:
+    length = state.read_xrf(args.rs2)
+    data = state.read_dram(state.read_xrf(args.rs1), length)
+    # zero pad the data to the size of the MRF
+    if data.numel() < _tensor_register_bytes(state):
+        data = torch.nn.functional.pad(
+            data,
+            (
+                0,
+                _tensor_register_bytes(state) - data.numel(),
+            ),
+        )
+    state.write_vmem(state.read_xrf(args.rd), 0, data)
+
+
+# TODO: Implement 'dma.store.ch<N>'
+@instr("dma.store.ch<N>", instruction_type=InstructionType.DMA)
+def dma_store_ch_n(state: ArchState, args: DmaArgs) -> None:
+    length = state.read_xrf(args.rs2)
+    data = state.read_vmem(state.read_xrf(args.rs1), 0, length)
+    state.write_dram(state.read_xrf(args.rd), data)
+
+
+# TODO: Implement 'dma.config.ch<N>'
+@instr("dma.config.ch<N>", instruction_type=InstructionType.DMA)
+def dma_config_ch_n(state: ArchState, args: DmaArgs) -> None:
+    state.base = state.read_xrf(args.rs1)
+
+
+# TODO: Implement 'dma.wait.ch<N>'
+@instr("dma.wait.ch<N>", instruction_type=InstructionType.DMA)
+def dma_wait_ch_n(state: ArchState, args: DmaArgs) -> None:
+    pass
+
+
+# =============================================================================
+# Extras not in README
+# =============================================================================
+
+
+@instr("mv.mw", instruction_type=InstructionType.MATRIX)
+def mv_mw(state: ArchState, args: MatrixArgs) -> None:
+    """
+    Vector/matrix move from matrix registers to weight buffer.
+    """
+    # TODO: check register dimensions
+    state.write_wb_bf16("mxu0", args.rd, state.read_mrf_bf16(args.rs1))
+
+
+@instr("vsqrt", instruction_type=InstructionType.VECTOR)
+def vsqrt(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    state.write_mrf_bf16(args.vd, torch.sqrt(x).to(torch.bfloat16))
+
+
+@instr("vlog2", instruction_type=InstructionType.VECTOR)
+def vlog2(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    state.write_mrf_bf16(args.vd, torch.log2(x).to(torch.bfloat16))
+
+
+@instr("vexp2", instruction_type=InstructionType.VECTOR)
+def vexp2(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    state.write_mrf_bf16(args.vd, torch.exp2(x).to(torch.bfloat16))
+
+
+@instr("vsin", instruction_type=InstructionType.VECTOR)
+def vsin(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    state.write_mrf_bf16(args.vd, torch.sin(x).to(torch.bfloat16))
+
+
+@instr("vcos", instruction_type=InstructionType.VECTOR)
+def vcos(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)
+    state.write_mrf_bf16(args.vd, torch.cos(x).to(torch.bfloat16))
+
+
+@instr("vtanh", instruction_type=InstructionType.VECTOR)
+def vtanh(state: ArchState, args: VectorArgs) -> None:
+    x = state.read_mrf_bf16(args.vs1)  # fixed missing x
+    state.write_mrf_bf16(args.vd, torch.tanh(x).to(torch.bfloat16))
+
+
+@instr("vrot.reduce.sum", instruction_type=InstructionType.VECTOR)
+def vrot_reduce_sum(state: ArchState, args: VectorArgs) -> None:
+    """Reduce sum over last (across rows) dimension. For (rows, cols) in, gives (rows, 1) broadcast."""
+    # TODO: implementation cost?
+    x = state.read_mrf_bf16(args.vs1)
+    sum_val = torch.sum(x.float(), dim=-1, keepdim=True)
+    out = sum_val.expand_as(x).to(torch.bfloat16)
+    state.write_mrf_bf16(args.vd, out)
+
+
+@instr("mv.mm", instruction_type=InstructionType.VECTOR)
+def mv_mm(state: ArchState, args: VectorArgs) -> None:
+    """
+    Vector/matrix move between matrix registers.
+    """
+    state.write_mrf_f32(args.rd, state.read_mrf_f32(args.rs1))
+
+
+@instr("vtrpose.h", instruction_type=InstructionType.VECTOR)
+def vtrpose_h(state: ArchState, args: VectorArgs) -> None:
+    """Transpose upper half: block = x[:, 0:half], write (cols, rows) with first half rows = block.T. Use with vtrpose.l + vadd for full transpose."""
+    # TODO: check correctness
+    x = state.read_mrf_bf16(args.vs1)
+    half = x.shape[0] // 2
+    block = x[0:half, :]
+    transposed = block.T.contiguous()
+    out = torch.zeros_like(x)
+    out[0:half, :] = transposed
+    state.write_mrf_bf16(args.vd, out)
+
+
+@instr("vtrpose.l", instruction_type=InstructionType.VECTOR)
+def vtrpose_l(state: ArchState, args: VectorArgs) -> None:
+    """Transpose lower half: block = x[:, half:], write (cols, rows) with second half rows = block.T. Use with vtrpose.h + vadd for full transpose."""
+    # TODO: check correctness
+    x = state.read_mrf_bf16(args.vs1)
+    half = x.shape[0] // 2
+    block = x[half:, :]
+    transposed = block.T.contiguous()
+    out = torch.zeros_like(x)
+    out[half:, :] = transposed
+    state.write_mrf_bf16(args.vd, out)
+
+
+@instr("vmatpop.mxu0", instruction_type=InstructionType.VECTOR)
+def vmatpop_mxu0(state: ArchState, args: VectorArgs) -> None:
+    state.write_mrf_bf16_tile(
+        args.vd, state.read_acc_bf16("mxu0", _acc_source_index(args))
+    )
+
+
+@instr("vmatpop.mxu1", instruction_type=InstructionType.VECTOR)
+def vmatpop_mxu1(state: ArchState, args: VectorArgs) -> None:
+    state.write_mrf_bf16_tile(
+        args.vd, state.read_acc_bf16("mxu1", _acc_source_index(args))
+    )
 
 
 @instr("dma.load", instruction_type=InstructionType.DMA)

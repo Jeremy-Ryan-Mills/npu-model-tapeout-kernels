@@ -15,6 +15,10 @@ class _I(Scalar):
     pass
 
 
+class _S(Scalar):
+    pass
+
+
 class _B(Scalar):
     pass
 
@@ -74,6 +78,7 @@ class InstructionType:
     class SCALAR:
         R = _R()
         I = _I()
+        S = _S()
         B = _B()
         J = _J()
         U = _U()
@@ -127,9 +132,9 @@ class MatrixArgs(Args):
 class DmaArgs(Args):
     rd: int = 0
     rs1: int = 0
-    base: int = 0
+    rs2: int = 0
     size: int = 0
-    flag: int = 0
+    flag: int = 0  # FIXME: this is not a real arg. should also be renamed to channel (unless we just want to make 8 different insns)
 
 
 class Operation:
