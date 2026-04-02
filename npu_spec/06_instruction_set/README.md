@@ -325,7 +325,9 @@ Rows are ordered by hex value.
 | `vmov`                   | `VR`     | `1010111` |                         | `1000000`        | `57/40`    | Vector Move                       | `m[vd] = m[vs1];` |
 | `vrecip.bf16`            | `VR`     | `1010111` |                         | `1000001`        | `57/41`    | Vector Reciprocal                 | `m[vd] = 1.f / m[vs1];` |
 | `vexp`                   | `VR`     | `1010111` |                         | `1000010`        | `57/42`    | Vector Exponential                | `m[vd] = bf16_exp(m[vs1]);` |
-| `vrelu`                  | `VR`     | `1010111` |                         | `1000100`        | `57/44`    | Vector ReLU                       | `m[vd] = bf16_relu(m[vs1]);` |
+| `vpack.bf16.fp8`         | `VR`     | `1010111` |                         | `1000100`        | `57/44`    | Vector Packing                    | `m[vd] = quantize(m[vs1], m[vs1+1], e[es1]);` |
+| `vunpack.fp8.bf16`       | `VR`     | `1010111` |                         | `1000101`        | `57/44`    | Vector Unpacking                    | `m[vd], m[vd+1] = dequantize(m[vs1], e[es1]);` |
+| `vrelu`                  | `VR`     | `1010111` |                         | `1001000`        | `57/48`    | Vector ReLU                       | `m[vd] = bf16_relu(m[vs1]);` |
 | `vli.all`                | `VI`     | `1011111` | `000`                   |                  | `5F/0`     | Vector Load Immediate             | `m[vd][:] = imm;` |
 | `vli.row`                | `VI`     | `1011111` | `001`                   |                  | `5F/1`     | Vector Load Immediate             | `m[vd][0, :] = imm;` |
 | `vli.col`                | `VI`     | `1011111` | `010`                   |                  | `5F/2`     | Vector Load Immediate             | `m[vd][:, 0] = imm;` |
