@@ -36,41 +36,55 @@ class MatmulProgram(Program):
         Instruction(
             mnemonic="addi", args=ScalarArgs(rd=2, rs1=0, imm=VMEM_WEIGHT_BASE)
         ),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=3, rs1=0, imm=VMEM_OUTPUT_BASE)),
         Instruction(
-            mnemonic="dma.load",
-            args=DmaArgs(rd=8, base=DRAM_ACTIVATION_BASE, size=1024, flag=0),
+            mnemonic="addi", args=ScalarArgs(rd=3, rs1=0, imm=VMEM_OUTPUT_BASE)
+        ),
+        # dram weights/activations -> vmem
+        Instruction(
+            mnemonic="addi", args=ScalarArgs(rd=4, rs1=0, imm=DRAM_ACTIVATION_BASE)
         ),
         Instruction(
-            mnemonic="dma.load",
-            args=DmaArgs(rd=9, base=DRAM_WEIGHT_BASE, size=1024, flag=1),
+            mnemonic="addi", args=ScalarArgs(rd=5, rs1=0, imm=DRAM_WEIGHT_BASE)
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=1)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=8, rs1=1, offset=0)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=9, rs1=2, offset=0)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, offset=0)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=1, rs1=2, offset=0)),
+        Instruction(mnemonic="addi", args=ScalarArgs(rd=6, rs1=0, imm=1024)),
+        Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, flag=0)),
+        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(flag=0)),
+        Instruction(
+            mnemonic="dma.load.ch<N>",
+            args=DmaArgs(rd=1, rs1=4, rs2=6, flag=0),
+        ),
+        Instruction(
+            mnemonic="dma.load.ch<N>",
+            args=DmaArgs(rd=2, rs1=5, rs2=6, flag=1),
+        ),
+        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(flag=0)),
+        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(flag=1)),
+        # load weights/activations from vmem
+        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),
+        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=2, imm12=0)),
+        # push to weight buffer, matmul, and pop from accumulation buffer
         Instruction(mnemonic="vmatpush.weight.mxu0", args=VectorArgs(vd=0, vs1=1)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=0), delay=16),
         Instruction(mnemonic="vmatmul.mxu0", args=VectorArgs(vd=0, vs1=0, vs2=0)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=0), delay=32),
         Instruction(mnemonic="vmatpop.bf16.acc.mxu0", args=VectorArgs(vd=2, vs2=0)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=2, rs1=3, offset=0)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=3, rs1=3, offset=32)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=10, rs1=3, offset=0)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=11, rs1=3, offset=32)),
-        Instruction(mnemonic="delay", args=VectorArgs(imm=0), delay=16),
+        # store to vmem
+        Instruction(mnemonic="vstore", args=VectorArgs(vd=2, rs1=3, imm12=0)),
+        Instruction(mnemonic="vstore", args=VectorArgs(vd=3, rs1=3, imm12=32)),
+        # store to dram
         Instruction(
-            mnemonic="dma.store",
-            args=DmaArgs(rs1=10, base=DRAM_OUTPUT_BASE, size=1024, flag=0),
+            mnemonic="addi", args=ScalarArgs(rd=10, rs1=0, imm=DRAM_OUTPUT_BASE)
         ),
+        Instruction(mnemonic="addi", args=ScalarArgs(rd=11, rs1=0, imm=1024)),
         Instruction(
-            mnemonic="dma.store",
-            args=DmaArgs(rs1=11, base=DRAM_OUTPUT_BASE + 1024, size=1024, flag=1),
+            mnemonic="dma.store.ch<N>", args=DmaArgs(rd=10, rs1=3, rs2=6, flag=0)
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=1)),
+        Instruction(mnemonic="addi", args=ScalarArgs(rd=3, rs1=3, imm=1024)),
+        Instruction(
+            mnemonic="dma.store.ch<N>", args=DmaArgs(rd=11, rs1=3, rs2=6, flag=1)
+        ),
+        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(flag=0)),
+        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(flag=1)),
     ]
 
     memory_regions: List[Tuple[int, torch.Tensor]] = [

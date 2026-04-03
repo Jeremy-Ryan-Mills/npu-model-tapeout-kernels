@@ -1,6 +1,3 @@
-from dis import Instruction
-from re import S
-
 import torch
 
 from typing import Any
@@ -156,27 +153,20 @@ def seli(state: ArchState, args: ScalarArgs):
 
 @instr("vload", instruction_type=InstructionType.VECTOR)
 def vload(state: ArchState, args: VectorArgs) -> None:
-    """
-    Load one full tensor register from VMEM.
-    """
-    base = _vls_address(state, args)
-    print(base)
-    data = state.read_memory(base, _tensor_register_bytes(state)).to(torch.uint8)
+    data = state.read_vmem(
+        state.read_xrf(args.rs1), args.imm12 << 5, _tensor_register_bytes(state)
+    ).view(
+        torch.uint8
+    )  # FIX: Use .view() to preserve float8 bit patterns
     state.write_mrf_u8(args.vd, data)
 
 
 @instr("vstore", instruction_type=InstructionType.VECTOR)
 def vstore(state: ArchState, args: VectorArgs) -> None:
-    """
-    Store one full tensor register to VMEM.
-    """
-    base = _vls_address(state, args)
-    register_index = getattr(
-        args, "vd", getattr(args, "rs2", getattr(args, "vs1", None))
+    data = state.mrf[args.vd].view(torch.uint8)
+    state.write_vmem(
+        state.read_xrf(args.rs1), args.imm12 << 5, data  # FIX: Shift by 5, not 12
     )
-    print(base)
-    data = state.mrf[register_index].view(torch.uint8)
-    state.write_memory(base, data)
 
 
 @instr("fence", instruction_type=InstructionType.SCALAR.I)
@@ -693,7 +683,7 @@ def dma_config_ch_n(state: ArchState, args: DmaArgs) -> None:
     state.base = state.read_xrf(args.rs1)
 
 
-@instr("dma.wait.ch<N>", instruction_type=InstructionType.DMA)
+@instr("dma.wait.ch<N>", instruction_type=InstructionType.BARRIER)
 def dma_wait_ch_n(state: ArchState, args: DmaArgs) -> None:
     pass
 
