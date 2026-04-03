@@ -18,6 +18,7 @@ class DefaultHardwareConfig(HardwareConfig):
         num_wb_registers=2,
         dram_size=1048576,
         vmem_size=256 * 1024,
+        imem_size=64 * 1024
     )
     mxu0_matmul_latency_cycles: int = 32
     mxu1_matmul_latency_cycles: int = 32

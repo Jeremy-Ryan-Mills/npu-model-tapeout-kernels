@@ -87,7 +87,9 @@ Examples:
     if hasattr(program, "golden_result") and program.golden_result:
         output_base, golden_tensor = program.golden_result
         size = golden_tensor.numel() * golden_tensor.element_size()
-        print(sim.core.arch_state.read_memory(output_base, size).view(golden_tensor.dtype))
+        print(
+            sim.core.arch_state.read_dram(output_base, size).view(golden_tensor.dtype)
+        )
 
 
 if __name__ == "__main__":
