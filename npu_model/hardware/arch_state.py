@@ -3,26 +3,6 @@ from ..logging.logger import Logger
 from .config import ArchStateConfig
 
 
-def _int_to_le_bytes(data, length) -> torch.Tensor:
-    type_map = {1: torch.uint8, 2: torch.int16, 4: torch.int32}
-
-    if length not in type_map:
-        raise ValueError("Length must be 1, 2, or 4 bytes.")
-
-    return torch.tensor([data], dtype=type_map[length]).view(torch.uint8).clone()
-
-
-def _le_bytes_to_int(tensor):
-    length = tensor.numel()
-    type_map = {1: torch.uint8, 2: torch.int16, 4: torch.int32}
-
-    if length not in type_map:
-        raise ValueError("Tensor length must be 1, 2, or 4 bytes.")
-
-    raw_val = tensor.contiguous().view(type_map[length]).item()
-
-    masks = {1: 0xFF, 2: 0xFFFF, 4: 0xFFFFFFFF}
-    return raw_val & masks[length]
 
 
 class ArchState:
