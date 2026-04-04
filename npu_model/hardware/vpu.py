@@ -197,4 +197,4 @@ class VectorExecutionUnit(ExecutionUnit):
 
     @property
     def supported_instruction_types(self) -> List[InstructionType]:
-        return [InstructionType.VLS.VECTOR, InstructionType.VR.VECTOR, InstructionType.VI.VECTOR]
+        return [InstructionType.VECTOR.VLS, InstructionType.VECTOR.VR, InstructionType.VECTOR.VI]

@@ -151,4 +151,4 @@ class DmaExecutionUnit(ExecutionUnit):
 
     @property
     def supported_instruction_types(self) -> List[InstructionType]:
-        return [InstructionType.R.DMA, InstructionType.I.DMA, InstructionType.I.BARRIER]
+        return [InstructionType.DMA.R, InstructionType.DMA.I, InstructionType.BARRIER.I]

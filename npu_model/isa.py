@@ -2,64 +2,65 @@ from typing import Callable
 from npu_model.software.instruction import Args
 from dataclasses import dataclass
 
-
-class _Scalar:
+class _R:
     pass
 
-class _MatrixSystolic:
+class _I:
     pass
 
-class _MatrixIPT:
+class _S:
     pass
 
-class _Vector:
+class _SB:
     pass
 
-class _DMA:
+class _U:
     pass
 
-class _Delay:
+class _UJ:
     pass
 
-class _Barrier:
+class _VLS:
+    pass
+
+class _VR:
+    pass
+
+class _VI:
     pass
 
 # --- Instruction type namespace ---
 
 
 class InstructionType:
-    class R:
-        SCALAR = _Scalar()
-        DMA = _DMA()
-    
-    class I:
-        SCALAR = _Scalar()
-        DMA = _DMA()
-        BARRIER = _Barrier()
-        DELAY = _Delay()
-    
-    class S:
-        SCALAR = _Scalar()
-    
-    class SB:
-        SCALAR = _Scalar()
-    
-    class U:
-        SCALAR = _Scalar()
-    
-    class UJ:
-        SCALAR = _Scalar()
-    
-    class VLS:
-        VECTOR = _Vector()
+    class SCALAR:
+        R = _R()
+        I = _I()
+        S = _S()
+        SB = _SB()
+        U = _U()
+        UJ = _UJ()
 
-    class VR:
-        VECTOR = _Vector()
-        MATRIX_SYSTOLIC = _MatrixSystolic()
-        MATRIX_IPT = _MatrixIPT()
+    class VECTOR:
+        VLS = _VLS()
+        VR = _VR()
+        VI = _VI()
 
-    class VI:
-        VECTOR = _Vector()
+    class DMA:
+        R = _R()
+        I = _I()
+
+    class MATRIX_SYSTOLIC:
+        VR = _VR()
+
+    class MATRIX_IPT:
+        VR = _VR()
+
+    class DELAY:
+        I = _I()
+
+    class BARRIER:
+        I = _I()
 
 
 @dataclass
