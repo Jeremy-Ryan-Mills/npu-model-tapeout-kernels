@@ -1,12 +1,7 @@
 from typing import Callable
-from dataclasses import dataclass, asdict, is_dataclass
+from dataclasses import asdict, is_dataclass
 
-
-@dataclass
-class Args:
-    
-    pass
-
+from ..isa import IsaSpec, Args, ScalarArgs, VectorArgs
 
 class Instruction:
     """
@@ -34,6 +29,34 @@ class Instruction:
         args_str = [f"{k}={v}" for k, v in args_dict.items()]
         return f"{self.mnemonic} {', '.join(args_str)}"
 
+    def assemble(self) -> int:
+        # find type from mnemonic table
+        operation = IsaSpec.operations[self.mnemonic]
+
+        # our first pass should correctly set these things in the IR,
+        # but as a convenience feature for people writing in the IR
+        # we fix args for shifts and breakpoint/ecall here
+        if self.mnemonic == "ecall" and isinstance(self.args, ScalarArgs):
+            self.args.imm = 0b000000000000
+        elif self.mnemonic == "ebreak" and isinstance(self.args, ScalarArgs):
+            self.args.imm = 0b000000000001
+        elif (self.mnemonic == "srli" or self.mnemonic == "srai") and isinstance(self.args, ScalarArgs):
+            self.args.imm = self.args.imm & 0b000000011111
+        elif self.mnemonic == "srai" and isinstance(self.args, ScalarArgs):
+            self.args.imm = (self.args.imm & 0b000000011111) | 0b0100000000000
+        elif self.mnemonic == "fence" and isinstance(self.args, ScalarArgs):
+            self.args.imm = 0b000000000000
+        
+        if isinstance(self.args, VectorArgs)and self.args.imm12 != 0:
+            self.args.imm = self.args.imm12
+
+        return operation.instruction_type.assemble(
+            operation.opcode,
+            operation.funct2,
+            operation.funct3,
+            operation.funct7,
+            self.args
+        )
 
 class Uop:
     """

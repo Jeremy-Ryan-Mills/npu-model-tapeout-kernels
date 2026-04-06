@@ -1,8 +1,6 @@
 import torch
 
 from typing import Any
-from npu_model.hardware import dma
-from npu_model.hardware import arch_state
 from npu_model.isa import (
     DmaArgs,
     MatrixArgs,
@@ -12,7 +10,6 @@ from npu_model.isa import (
     InstructionType,
 )
 from npu_model.hardware.arch_state import ArchState
-from npu_model.software import instruction
 
 
 PIPELINE_LATENCY = 2
@@ -110,47 +107,47 @@ def _vmatmul(state: ArchState, unit: str, args: MatrixArgs, accumulate: bool) ->
 # =============================================================================
 
 
-@instr("lb", instruction_type=InstructionType.SCALAR.I)
+@instr("lb", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b000)
 def lb(state: ArchState, args: ScalarArgs) -> None:
     value = _le_bytes_to_int(state.read_vmem(state.read_xrf(args.rs1), args.imm, 1))
     state.write_xrf(args.rd, _sign_extend(value, 8))
 
 
-@instr("lh", instruction_type=InstructionType.SCALAR.I)
+@instr("lh", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b001)
 def lh(state: ArchState, args: ScalarArgs) -> None:
     value = _le_bytes_to_int(state.read_vmem(state.read_xrf(args.rs1), args.imm, 2))
     state.write_xrf(args.rd, _sign_extend(value, 16))
 
 
-@instr("lw", instruction_type=InstructionType.SCALAR.I)
+@instr("lw", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b010)
 def lw(state: ArchState, args: ScalarArgs) -> None:
     value = _le_bytes_to_int(state.read_vmem(state.read_xrf(args.rs1), args.imm, 4))
     state.write_xrf(args.rd, value)
 
 
-@instr("lbu", instruction_type=InstructionType.SCALAR.I)
+@instr("lbu", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b100)
 def lbu(state: ArchState, args: ScalarArgs) -> None:
     value = _le_bytes_to_int(state.read_vmem(state.read_xrf(args.rs1), args.imm, 1))
     state.write_xrf(args.rd, value)
 
 
-@instr("lhu", instruction_type=InstructionType.SCALAR.I)
+@instr("lhu", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b101)
 def lhu(state: ArchState, args: ScalarArgs) -> None:
     value = _le_bytes_to_int(state.read_vmem(state.read_xrf(args.rs1), args.imm, 2))
     state.write_xrf(args.rd, value)
 
 
-@instr("seld", instruction_type=InstructionType.SCALAR.I)
+@instr("seld", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b110)
 def seld(state: ArchState, args: ScalarArgs) -> None:
     state.write_erf(args.rd, state.read_vmem(state.read_xrf(args.rs1), args.imm, 1))
 
 
-@instr("seli", instruction_type=InstructionType.SCALAR.I)
+@instr("seli", instruction_type=InstructionType.SCALAR.I, opcode=0b0000011, funct3=0b111)
 def seli(state: ArchState, args: ScalarArgs):
     state.write_erf(args.rd, args.imm)
 
 
-@instr("vload", instruction_type=InstructionType.VECTOR.VLS)
+@instr("vload", instruction_type=InstructionType.VECTOR.VLS, opcode=0b0000111, funct2=0b00)
 def vload(state: ArchState, args: VectorArgs) -> None:
     data = state.read_vmem(
         state.read_xrf(args.rs1), args.imm12 << 5, _tensor_register_bytes(state)
@@ -160,7 +157,7 @@ def vload(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_u8(args.vd, data)
 
 
-@instr("vstore", instruction_type=InstructionType.VECTOR.VLS)
+@instr("vstore", instruction_type=InstructionType.VECTOR.VLS, opcode=0b0000111, funct2=0b01)
 def vstore(state: ArchState, args: VectorArgs) -> None:
     data = state.mrf[args.vd].view(torch.uint8)
     state.write_vmem(
@@ -168,144 +165,144 @@ def vstore(state: ArchState, args: VectorArgs) -> None:
     )
 
 
-@instr("fence", instruction_type=InstructionType.SCALAR.I)
+@instr("fence", instruction_type=InstructionType.SCALAR.I, opcode=0b0001111, funct3=0b000)
 def fence(state: ArchState, args: ScalarArgs) -> None:
     pass
 
 
-@instr("addi", instruction_type=InstructionType.SCALAR.I)
+@instr("addi", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b000)
 def addi(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] + args.imm)
 
 
-@instr("slli", instruction_type=InstructionType.SCALAR.I)
+@instr("slli", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b001)
 def slli(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] << args.imm)
 
 
-@instr("slti", instruction_type=InstructionType.SCALAR.I)
+@instr("slti", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b010)
 def slti(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, 1 if state.xrf[args.rs1] < args.imm else 0)
 
 
-@instr("sltiu", instruction_type=InstructionType.SCALAR.I)
+@instr("sltiu", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b011)
 def sltiu(state: ArchState, args: ScalarArgs) -> None:
     a = state.xrf[args.rs1] & _MASK64
     b = args.imm & _MASK64
     state.write_xrf(args.rd, 1 if a < b else 0)
 
 
-@instr("xori", instruction_type=InstructionType.SCALAR.I)
+@instr("xori", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b100)
 def xori(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] ^ args.imm)
 
 
-@instr("srli", instruction_type=InstructionType.SCALAR.I)
+@instr("srli", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b101)
 def srli(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] >> args.imm)
 
 
-@instr("srai", instruction_type=InstructionType.SCALAR.I)
+@instr("srai", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b101)
 def srai(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] >> args.imm)
 
 
-@instr("ori", instruction_type=InstructionType.SCALAR.I)
+@instr("ori", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b110)
 def ori(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] | args.imm)
 
 
-@instr("andi", instruction_type=InstructionType.SCALAR.I)
+@instr("andi", instruction_type=InstructionType.SCALAR.I, opcode=0b0010011, funct3=0b111)
 def andi(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] & args.imm)
 
 
-@instr("auipc", instruction_type=InstructionType.SCALAR.U)
+@instr("auipc", instruction_type=InstructionType.SCALAR.U, opcode=0b0010111)
 def auipc(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, (args.imm << 20) & 0xFFFFFFFF + state.pc)
 
 
-@instr("sb", instruction_type=InstructionType.SCALAR.S)
+@instr("sb", instruction_type=InstructionType.SCALAR.S, opcode=0b0100011, funct3=0b000)
 def sb(state: ArchState, args: ScalarArgs) -> None:
     state.write_vmem(args.rs1, args.imm, state.read_xrf(args.rs1) & 0xFF)
 
 
-@instr("sh", instruction_type=InstructionType.SCALAR.S)
+@instr("sh", instruction_type=InstructionType.SCALAR.S, opcode=0b0100011, funct3=0b001)
 def sh(state: ArchState, args: ScalarArgs) -> None:
     state.write_vmem(args.rs1, args.imm, state.read_xrf(args.rs1) & 0xFFFF)
 
 
-@instr("sw", instruction_type=InstructionType.SCALAR.S)
+@instr("sw", instruction_type=InstructionType.SCALAR.S, opcode=0b0100011, funct3=0b010)
 def sw(state: ArchState, args: ScalarArgs) -> None:
     state.write_vmem(args.rs1, args.imm, state.read_xrf(args.rs1) & 0xFFFFFFFF)
 
 
-@instr("add", instruction_type=InstructionType.SCALAR.R)
+@instr("add", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b000, funct7=0b0000000)
 def add(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] + state.xrf[args.rs2])
 
 
-@instr("sub", instruction_type=InstructionType.SCALAR.R)
+@instr("sub", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b000, funct7=0b0100000)
 def sub(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] - state.xrf[args.rs2])
 
 
-@instr("sll", instruction_type=InstructionType.SCALAR.R)
+@instr("sll", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b001, funct7=0b0000000)
 def sll(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] << state.xrf[args.rs2])
 
 
-@instr("slt", instruction_type=InstructionType.SCALAR.R)
+@instr("slt", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b010, funct7=0b0000000)
 def slt(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, 1 if state.xrf[args.rs1] < state.xrf[args.rs2] else 0)
 
 
-@instr("sltu", instruction_type=InstructionType.SCALAR.R)
+@instr("sltu", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b011, funct7=0b0000000)
 def sltu(state: ArchState, args: ScalarArgs) -> None:
     a = state.xrf[args.rs1] & _MASK64
     b = state.xrf[args.rs2] & _MASK64
     state.write_xrf(args.rd, 1 if a < b else 0)
 
 
-@instr("xor", instruction_type=InstructionType.SCALAR.R)
+@instr("xor", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b100, funct7=0b0000000)
 def xor(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] ^ state.xrf[args.rs2])
 
 
-@instr("srl", instruction_type=InstructionType.SCALAR.R)
+@instr("srl", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b101, funct7=0b0000000)
 def srl(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] >> state.xrf[args.rs2])
 
 
-@instr("sra", instruction_type=InstructionType.SCALAR.R)
+@instr("sra", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b101, funct7=0b0100000)
 def sra(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] >> state.xrf[args.rs2])
 
 
-@instr("or", instruction_type=InstructionType.SCALAR.R)
+@instr("or", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b110, funct7=0b0000000)
 def or_(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] | state.xrf[args.rs2])
 
 
-@instr("and", instruction_type=InstructionType.SCALAR.R)
+@instr("and", instruction_type=InstructionType.SCALAR.R, opcode=0b0110011, funct3=0b111, funct7=0b0000000)
 def and_(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.xrf[args.rs1] & state.xrf[args.rs2])
 
 
-@instr("lui", instruction_type=InstructionType.SCALAR.U)
+@instr("lui", instruction_type=InstructionType.SCALAR.U, opcode=0b0110111, funct7=0b0000000)
 def lui(state: ArchState, args: ScalarArgs) -> None:
     """Load upper immediate: rd = imm << 12 (RISC-V LUI semantics)."""
     state.write_xrf(args.rd, (args.imm << 12) & _MASK64)
 
 
-@instr("vadd.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vadd.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0000000)
 def vadd_bf16(state: ArchState, args: VectorArgs) -> None:
     a = state.read_mrf_bf16(args.vs1)
     b = state.read_mrf_bf16(args.vs2)
     state.write_mrf_bf16(args.vd, (a + b).to(torch.bfloat16))
 
 
-@instr("vredsum.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vredsum.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0000001)
 def vredsum_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     summed = x.sum(dim=0)
@@ -314,24 +311,24 @@ def vredsum_bf16(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(result)
 
 
-@instr("vsub.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vsub.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0000010)
 def vsub_bf16(state: ArchState, args: VectorArgs) -> None:
     a = state.read_mrf_bf16(args.vs1)
     b = state.read_mrf_bf16(args.vs2)
     state.write_mrf_bf16(args.vd, (a - b).to(torch.bfloat16))
 
 
-@instr("vmin.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmin.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0000100)
 def vmin_bf16(state: ArchState, args: VectorArgs) -> None:
     pass  # TODO: implementation missing in original
 
 
-@instr("vmax.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmax.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0000110)
 def vmax_bf16(state: ArchState, args: VectorArgs) -> None:
     pass  # TODO: implementation missing in original
 
 
-@instr("vmul.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmul.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0100100)
 def vmul_bf16(state: ArchState, args: VectorArgs) -> None:
     a = state.read_mrf_bf16(args.vs1)
     b = state.read_mrf_bf16(args.vs2)
@@ -339,29 +336,29 @@ def vmul_bf16(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, result)
 
 
-@instr("vmov", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmov", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1000000)
 def vmov(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, state.read_mrf_bf16(args.vs1))
 
 
-@instr("vrecip.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vrecip.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1000001)
 def vrecip_bf16(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, 1.0 / state.read_mrf_bf16(args.vs1))
 
 
-@instr("vexp.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vexp.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1000010)
 def vexp_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     state.write_mrf_bf16(args.vd, torch.exp(x).to(torch.bfloat16))
 
 
-@instr("vexp2.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vexp2.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1000011)
 def vexp2_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     state.write_mrf_bf16(args.vd, torch.exp2(x).to(torch.bfloat16))
 
 
-@instr("vpack.bf16.fp8", instruction_type=InstructionType.VECTOR.VR)
+@instr("vpack.bf16.fp8", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1000100)
 def vpack_bf16_fp8(state: ArchState, args: VectorArgs) -> None:
     assert args.vs1 != state.cfg.num_m_registers - 1
 
@@ -376,7 +373,7 @@ def vpack_bf16_fp8(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_fp8(args.vd, quantized_fp8)
 
 
-@instr("vunpack.fp8.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vunpack.fp8.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1000101)
 def vunpack_fp8_bf16(state: ArchState, args: VectorArgs) -> None:
     assert args.vd != state.cfg.num_m_registers - 1
 
@@ -392,48 +389,48 @@ def vunpack_fp8_bf16(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd + 1, reg_high)
 
 
-@instr("vrelu.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vrelu.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1001000)
 def vrelu_bf16(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, torch.relu(state.read_mrf_bf16(args.vs1)))
 
 
-@instr("vsin.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vsin.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1001001)
 def vsin_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     state.write_mrf_bf16(args.vd, torch.sin(x).to(torch.bfloat16))
 
 
-@instr("vcos.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vcos.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1001010)
 def vcos_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     state.write_mrf_bf16(args.vd, torch.cos(x).to(torch.bfloat16))
 
 
-@instr("vtanh.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vtanh.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1001011)
 def vtanh_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)  # fixed missing x
     state.write_mrf_bf16(args.vd, torch.tanh(x).to(torch.bfloat16))
 
 
-@instr("vlog2.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vlog2.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1001100)
 def vlog2_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     state.write_mrf_bf16(args.vd, torch.log2(x).to(torch.bfloat16))
 
 
-@instr("vsqrt.bf16", instruction_type=InstructionType.VECTOR.VR)
+@instr("vsqrt.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b1001101)
 def vsqrt_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     state.write_mrf_bf16(args.vd, torch.sqrt(x).to(torch.bfloat16))
 
 
-@instr("vli.all", instruction_type=InstructionType.VECTOR.VI)
+@instr("vli.all", instruction_type=InstructionType.VECTOR.VI, opcode=0b1011111, funct3=0b000)
 def vli_all(state: ArchState, args: VectorArgs) -> None:
     shape = state.read_mrf_bf16(0).shape
     state.write_mrf_bf16(args.vd, torch.full(shape, args.imm, dtype=torch.bfloat16))
 
 
-@instr("vli.row", instruction_type=InstructionType.VECTOR.VI)
+@instr("vli.row", instruction_type=InstructionType.VECTOR.VI, opcode=0b1011111, funct3=0b001)
 def vli_row(state: ArchState, args: VectorArgs) -> None:
     shape = state.read_mrf_bf16(0).shape
     x = torch.zeros(shape, dtype=torch.bfloat16)
@@ -441,7 +438,7 @@ def vli_row(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, x)
 
 
-@instr("vli.col", instruction_type=InstructionType.VECTOR.VI)
+@instr("vli.col", instruction_type=InstructionType.VECTOR.VI, opcode=0b1011111, funct3=0b010)
 def vli_col(state: ArchState, args: VectorArgs) -> None:
     shape = state.read_mrf_bf16(0).shape
     x = torch.zeros(shape, dtype=torch.bfloat16)
@@ -449,7 +446,7 @@ def vli_col(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, x)
 
 
-@instr("vli.one", instruction_type=InstructionType.VECTOR.VI)
+@instr("vli.one", instruction_type=InstructionType.VECTOR.VI, opcode=0b1011111, funct3=0b011)
 def vli_one(state: ArchState, args: VectorArgs) -> None:
     shape = state.read_mrf_bf16(0).shape
     x = torch.zeros(shape, dtype=torch.bfloat16)
@@ -457,7 +454,7 @@ def vli_one(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, x)
 
 
-@instr("beq", instruction_type=InstructionType.SCALAR.SB)
+@instr("beq", instruction_type=InstructionType.SCALAR.SB, opcode=0b1100011, funct3=0b000)
 def beq(state: ArchState, args: ScalarArgs) -> None:
     if state.xrf[args.rs1] == state.xrf[args.rs2]:
         state.set_npc(
@@ -465,7 +462,7 @@ def beq(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-@instr("bne", instruction_type=InstructionType.SCALAR.SB)
+@instr("bne", instruction_type=InstructionType.SCALAR.SB, opcode=0b1100011, funct3=0b001)
 def bne(state: ArchState, args: ScalarArgs) -> None:
     if state.xrf[args.rs1] != state.xrf[args.rs2]:
         state.set_npc(
@@ -473,7 +470,7 @@ def bne(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-@instr("blt", instruction_type=InstructionType.SCALAR.SB)
+@instr("blt", instruction_type=InstructionType.SCALAR.SB, opcode=0b1100011, funct3=0b100)
 def blt(state: ArchState, args: ScalarArgs) -> None:
     if state.xrf[args.rs1] < state.xrf[args.rs2]:
         state.set_npc(
@@ -481,7 +478,7 @@ def blt(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-@instr("bge", instruction_type=InstructionType.SCALAR.SB)
+@instr("bge", instruction_type=InstructionType.SCALAR.SB, opcode=0b1100011, funct3=0b101)
 def bge(state: ArchState, args: ScalarArgs) -> None:
     """Branch if rs1 >= rs2 (signed)."""
     if state.xrf[args.rs1] >= state.xrf[args.rs2]:
@@ -490,7 +487,7 @@ def bge(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-@instr("bltu", instruction_type=InstructionType.SCALAR.SB)
+@instr("bltu", instruction_type=InstructionType.SCALAR.SB, opcode=0b1100011, funct3=0b110)
 def bltu(state: ArchState, args: ScalarArgs) -> None:
     """Branch if rs1 < rs2 (unsigned)."""
     a = state.xrf[args.rs1] & _MASK64
@@ -501,7 +498,7 @@ def bltu(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-@instr("bgeu", instruction_type=InstructionType.SCALAR.SB)
+@instr("bgeu", instruction_type=InstructionType.SCALAR.SB, opcode=0b1100011, funct3=0b111)
 def bgeu(state: ArchState, args: ScalarArgs) -> None:
     """Branch if rs1 >= rs2 (unsigned)."""
     a = state.xrf[args.rs1] & _MASK64
@@ -512,7 +509,7 @@ def bgeu(state: ArchState, args: ScalarArgs) -> None:
         )  # FIXME: this is a hack to compensate for the IF->EX delay
 
 
-@instr("jalr", instruction_type=InstructionType.SCALAR.UJ)
+@instr("jalr", instruction_type=InstructionType.SCALAR.I, opcode=0b1100111, funct3=0b000)
 def jalr(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.pc + 4)
     state.set_npc(
@@ -520,12 +517,12 @@ def jalr(state: ArchState, args: ScalarArgs) -> None:
     )  # FIXME: this is a hack to
 
 
-@instr("delay", instruction_type=InstructionType.DELAY.I)
+@instr("delay", instruction_type=InstructionType.DELAY.I, opcode=0b1100111, funct3=0b001)
 def delay(state: ArchState, args: ScalarArgs) -> None:
     pass
 
 
-@instr("vtrpose.xlu", instruction_type=InstructionType.VECTOR.VR)
+@instr("vtrpose.xlu", instruction_type=InstructionType.VECTOR.VR, opcode=0b1101011, funct7=0b0000000)
 def vtrpose_xlu(state: ArchState, args: VectorArgs) -> None:
     assert args.vs1 != state.cfg.num_m_registers - 1
     assert args.vd != state.cfg.num_m_registers - 1
@@ -539,19 +536,19 @@ def vtrpose_xlu(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd + 1, dst_1)
 
 
-@instr("vreduce.max.xlu", instruction_type=InstructionType.VECTOR.VR)
+@instr("vreduce.max.xlu", instruction_type=InstructionType.VECTOR.VR, opcode=0b1101011, funct7=0b0000001)
 def vreduce_max_xlu(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1).max(dim=1).values
     state.write_mrf_bf16(args.vd, x)
 
 
-@instr("vreduce.sum.xlu", instruction_type=InstructionType.VECTOR.VR)
+@instr("vreduce.sum.xlu", instruction_type=InstructionType.VECTOR.VR, opcode=0b1101011, funct7=0b0000010)
 def vreduce_sum_xlu(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1).sum(dim=1)
     state.write_mrf_bf16(args.vd, x)
 
 
-@instr("jal", instruction_type=InstructionType.SCALAR.UJ)
+@instr("jal", instruction_type=InstructionType.SCALAR.UJ, opcode=0b1101111)
 def jal(state: ArchState, args: ScalarArgs) -> None:
     state.write_xrf(args.rd, state.pc + 4)
     state.set_npc(
@@ -560,28 +557,28 @@ def jal(state: ArchState, args: ScalarArgs) -> None:
 
 
 # TODO: Implement 'ecall'
-@instr("ecall", instruction_type=InstructionType.SCALAR.I)
+@instr("ecall", instruction_type=InstructionType.SCALAR.I, opcode=0b1110011, funct3=0b000)
 def ecall(state: ArchState, args: ScalarArgs) -> None:
     pass
 
 
 # TODO: Implement 'ebreak'
-@instr("ebreak", instruction_type=InstructionType.SCALAR.I)
+@instr("ebreak", instruction_type=InstructionType.SCALAR.I, opcode=0b1110011, funct3=0b000)
 def ebreak(state: ArchState, args: ScalarArgs) -> None:
     pass
 
 
-@instr("vmatpush.weight.mxu0", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpush.weight.mxu0", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000000)
 def vmatpush_weight_mxu0(state: ArchState, args: VectorArgs) -> None:
     state.write_wb_u8("mxu0", args.vd, state.mrf[args.vs1].view(torch.uint8))
 
 
-@instr("vmatpush.weight.mxu1", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpush.weight.mxu1", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000001)
 def vmatpush_weight_mxu1(state: ArchState, args: VectorArgs) -> None:
     state.write_wb_u8("mxu1", args.vd, state.mrf[args.vs1].view(torch.uint8))
 
 
-@instr("vmatpush.acc.fp8.mxu0", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpush.acc.fp8.mxu0", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000010)
 def vmatpush_acc_fp8_mxu0(state: ArchState, args: VectorArgs) -> None:
     state.write_acc_bf16(
         "mxu0",
@@ -590,7 +587,7 @@ def vmatpush_acc_fp8_mxu0(state: ArchState, args: VectorArgs) -> None:
     )
 
 
-@instr("vmatpush.acc.fp8.mxu1", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpush.acc.fp8.mxu1", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000011)
 def vmatpush_acc_fp8_mxu1(state: ArchState, args: VectorArgs) -> None:
     state.write_acc_bf16(
         "mxu1",
@@ -599,21 +596,21 @@ def vmatpush_acc_fp8_mxu1(state: ArchState, args: VectorArgs) -> None:
     )
 
 
-@instr("vmatpush.acc.bf16.mxu0", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpush.acc.bf16.mxu0", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000100)
 def vmatpush_acc_bf16_mxu0(state: ArchState, args: VectorArgs) -> None:
     state.write_acc_bf16(
         "mxu0", _acc_dest_index(args), state.read_mrf_bf16_tile(args.vs1)
     )
 
 
-@instr("vmatpush.acc.bf16.mxu1", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpush.acc.bf16.mxu1", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000101)
 def vmatpush_acc_bf16_mxu1(state: ArchState, args: VectorArgs) -> None:
     state.write_acc_bf16(
         "mxu1", _acc_dest_index(args), state.read_mrf_bf16_tile(args.vs1)
     )
 
 
-@instr("vmatpop.fp8.acc.mxu0", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpop.fp8.acc.mxu0", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000110)
 def vmatpop_fp8_acc_mxu0(state: ArchState, args: VectorArgs) -> None:
     quantized = state.read_acc_bf16("mxu0", _acc_source_index(args)).to(
         torch.float8_e4m3fn
@@ -621,7 +618,7 @@ def vmatpop_fp8_acc_mxu0(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_u8(args.vd, quantized.view(torch.uint8))
 
 
-@instr("vmatpop.fp8.acc.mxu1", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpop.fp8.acc.mxu1", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0000111)
 def vmatpop_fp8_acc_mxu1(state: ArchState, args: VectorArgs) -> None:
     quantized = state.read_acc_bf16("mxu1", _acc_source_index(args)).to(
         torch.float8_e4m3fn
@@ -629,60 +626,60 @@ def vmatpop_fp8_acc_mxu1(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_u8(args.vd, quantized.view(torch.uint8))
 
 
-@instr("vmatpop.bf16.acc.mxu0", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpop.bf16.acc.mxu0", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0001000)
 def vmatpop_bf16_acc_mxu0(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16_tile(
         args.vd, state.read_acc_bf16("mxu0", _acc_source_index(args))
     )
 
 
-@instr("vmatpop.bf16.acc.mxu1", instruction_type=InstructionType.VECTOR.VR)
+@instr("vmatpop.bf16.acc.mxu1", instruction_type=InstructionType.VECTOR.VR, opcode=0b1110111, funct7=0b0001001)
 def vmatpop_bf16_acc_mxu1(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16_tile(
         args.vd, state.read_acc_bf16("mxu1", _acc_source_index(args))
     )
 
 
-@instr("vmatmul.mxu0", instruction_type=InstructionType.MATRIX_SYSTOLIC.VR)
+@instr("vmatmul.mxu0", instruction_type=InstructionType.MATRIX_SYSTOLIC.VR, opcode=0b1110111, funct7=0b0001010)
 def vmatmul_mxu0(state: ArchState, args: MatrixArgs) -> None:
     _vmatmul(state, "mxu0", args, accumulate=False)
 
 
-@instr("vmatmul.mxu1", instruction_type=InstructionType.MATRIX_IPT.VR)
+@instr("vmatmul.mxu1", instruction_type=InstructionType.MATRIX_IPT.VR, opcode=0b1110111, funct7=0b0001011)
 def vmatmul_mxu1(state: ArchState, args: MatrixArgs) -> None:
     _vmatmul(state, "mxu1", args, accumulate=False)
 
 
-@instr("vmatmul.acc.mxu0", instruction_type=InstructionType.MATRIX_SYSTOLIC.VR)
+@instr("vmatmul.acc.mxu0", instruction_type=InstructionType.MATRIX_SYSTOLIC.VR, opcode=0b1110111, funct7=0b0001100)
 def vmatmul_acc_mxu0(state: ArchState, args: MatrixArgs) -> None:
     _vmatmul(state, "mxu0", args, accumulate=True)
 
 
-@instr("vmatmul.acc.mxu1", instruction_type=InstructionType.MATRIX_IPT.VR)
+@instr("vmatmul.acc.mxu1", instruction_type=InstructionType.MATRIX_IPT.VR, opcode=0b1110111, funct7=0b0001101)
 def vmatmul_acc_mxu1(state: ArchState, args: MatrixArgs) -> None:
     _vmatmul(state, "mxu1", args, accumulate=True)
 
 
-@instr("dma.load.ch<N>", instruction_type=InstructionType.DMA.R)
+@instr("dma.load.ch<N>", instruction_type=InstructionType.DMA.R, opcode=0b1111011, funct7=0b0000000)
 def dma_load_ch_n(state: ArchState, args: DmaArgs) -> None:
     length = state.read_xrf(args.rs2)
     data = state.read_dram(state.read_xrf(args.rs1), length)
     state.write_vmem(state.read_xrf(args.rd), 0, data)
 
 
-@instr("dma.store.ch<N>", instruction_type=InstructionType.DMA.R)
+@instr("dma.store.ch<N>", instruction_type=InstructionType.DMA.R, opcode=0b1111011, funct7=0b0000001)
 def dma_store_ch_n(state: ArchState, args: DmaArgs) -> None:
     length = state.read_xrf(args.rs2)
     data = state.read_vmem(state.read_xrf(args.rs1), 0, length)
     state.write_dram(state.read_xrf(args.rd), data)
 
 
-@instr("dma.config.ch<N>", instruction_type=InstructionType.DMA.I)
+@instr("dma.config.ch<N>", instruction_type=InstructionType.DMA.I, opcode=0b1111111, funct7=0b0000000)
 def dma_config_ch_n(state: ArchState, args: DmaArgs) -> None:
     state.base = state.read_xrf(args.rs1)
 
 
-@instr("dma.wait.ch<N>", instruction_type=InstructionType.BARRIER.I)
+@instr("dma.wait.ch<N>", instruction_type=InstructionType.BARRIER.I, opcode=0b1111111, funct7=0b0000001)
 def dma_wait_ch_n(state: ArchState, args: DmaArgs) -> None:
     pass
 

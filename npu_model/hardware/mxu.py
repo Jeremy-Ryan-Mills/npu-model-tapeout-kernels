@@ -4,7 +4,7 @@ from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from ..hardware.arch_state import ArchState
 from ..software.instruction import Uop
-from ..isa import InstructionType
+from ..isa import InstructionType, AsmInstructionType
 from .stage_data import StageData
 from .config import HardwareConfig
 
@@ -123,7 +123,7 @@ class MatrixExecutionUnitSystolic(ExecutionUnit):
         return self._busy_cycles
 
     @property
-    def supported_instruction_types(self) -> List[InstructionType]:
+    def supported_instruction_types(self) -> List[AsmInstructionType]:
         return [InstructionType.MATRIX_SYSTOLIC.VR]
 
 
@@ -241,5 +241,5 @@ class MatrixExecutionUnitInner(ExecutionUnit):
         return self._busy_cycles
 
     @property
-    def supported_instruction_types(self) -> List[InstructionType]:
+    def supported_instruction_types(self) -> List[AsmInstructionType]:
         return [InstructionType.MATRIX_IPT.VR]

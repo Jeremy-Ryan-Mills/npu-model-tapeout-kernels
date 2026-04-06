@@ -6,7 +6,7 @@ from .stage_data import StageData
 from ..logging.logger import Logger, LaneType
 from ..hardware.arch_state import ArchState
 from ..software.instruction import Uop
-from ..isa import InstructionType
+from ..isa import InstructionType, AsmInstructionType
 from ..hardware.config import HardwareConfig
 
 
@@ -79,7 +79,7 @@ class ExecutionUnit(Module):
 
     @property
     @abstractmethod
-    def supported_instruction_types(self) -> List[InstructionType]:
+    def supported_instruction_types(self) -> List[AsmInstructionType]:
         """List of instruction types supported by the execution unit."""
         pass
 
@@ -195,7 +195,7 @@ class ScalarExecutionUnit(ExecutionUnit):
         return False
 
     @property
-    def supported_instruction_types(self) -> List[InstructionType]:
+    def supported_instruction_types(self) -> List[AsmInstructionType]:
         return [
             InstructionType.SCALAR.R,
             InstructionType.SCALAR.I,

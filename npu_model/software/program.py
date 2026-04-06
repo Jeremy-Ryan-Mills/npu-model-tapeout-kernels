@@ -26,3 +26,13 @@ class Program:
     def is_finished(self, pc: int) -> bool:
         """Check if program execution is complete."""
         return pc >= len(self.instructions)
+    
+    def assemble(self) -> list[int]:
+        bytecode: list[int] = []
+        for instr in self.instructions:
+            bytecode.append(instr.assemble())
+        return bytecode
+
+class InstantiableProgram(Program):
+    def __init__(self, instructions: list[Instruction]):
+        self.instructions = instructions

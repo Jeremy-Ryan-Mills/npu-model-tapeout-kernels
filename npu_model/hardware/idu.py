@@ -5,7 +5,7 @@ from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from ..isa import IsaSpec
 from ..hardware.arch_state import ArchState
-from ..isa import InstructionType
+from ..isa import InstructionType, AsmInstructionType
 from .exu import *  # noqa: F401, F403
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ class InstructionDecode(Module):
         self.lane_id = 1
         self.cycle = 0
         # Build a mapping from EXU type to EXU instances
-        self.exu_map: dict[InstructionType, list[ExecutionUnit]] = {}
+        self.exu_map: dict[AsmInstructionType, list[ExecutionUnit]] = {}
         for exu in exus:
             exu_types = exu.supported_instruction_types
             for t in exu_types:
@@ -142,9 +142,9 @@ class InstructionDecode(Module):
         # if we dispatched a DMA instruction, set flag as busy here
         if exu_type == InstructionType.DMA.R or exu_type == InstructionType.DMA.I:
             assert not self.arch_state.check_flag(
-                self.uop.insn.args.flag
-            ), f"Flag {self.uop.insn.args.flag} is already set, erroneous program"
-            self.arch_state.set_flag(self.uop.insn.args.flag)
+                self.uop.insn.args.channel
+            ), f"Flag {self.uop.insn.args.channel} is already set, erroneous program"
+            self.arch_state.set_flag(self.uop.insn.args.channel)
         self.uop = None
 
     def claim_uop(self, ifu_output: StageData["Uop | None"]) -> None:
@@ -156,7 +156,7 @@ class InstructionDecode(Module):
         exu_type = instr_definition.instruction_type
 
         if exu_type == InstructionType.BARRIER.I:
-            if self.arch_state.check_flag(uop.insn.args.flag):
+            if self.arch_state.check_flag(uop.insn.args.channel):
                 self._stalled = True
                 return True
             else:

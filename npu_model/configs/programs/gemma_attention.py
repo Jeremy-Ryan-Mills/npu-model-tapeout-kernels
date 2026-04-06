@@ -46,7 +46,7 @@ class GemmaAttentionProgram(Program):
                 rd=0,
                 base=KEY_BASE,
                 size=KEY_DATA.numel() * torch.float8_e4m3fn.itemsize,
-                flag=0,
+                channel=0,
             ),
         ),
         Instruction(
@@ -55,11 +55,11 @@ class GemmaAttentionProgram(Program):
                 rd=1,
                 base=VALUE_BASE,
                 size=VALUE_DATA.numel() * torch.float8_e4m3fn.itemsize,
-                flag=1,
+                channel=1,
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=1)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=0)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=1)),
         # Load Q into MRF 0 and the scaling matrix into MRF 2
         Instruction(
             mnemonic="dma.load",
@@ -67,7 +67,7 @@ class GemmaAttentionProgram(Program):
                 rd=0,
                 base=QUERY_BASE,
                 size=QUERY_DATA.numel() * torch.float8_e4m3fn.itemsize,
-                flag=2,
+                channel=2,
             ),
         ),
         Instruction(
@@ -76,11 +76,11 @@ class GemmaAttentionProgram(Program):
                 rd=2,
                 base=SCALE_BASE,
                 size=SCALE_DATA.numel() * torch.bfloat16.itemsize,
-                flag=3,
+                channel=3,
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=2)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=3)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=2)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=3)),
         # scores = Q @ K   -> MRF 3
         Instruction(mnemonic="vmatmul.mxu0", args=MatrixArgs(vd=0, vs1=0, vs2=0)),
         Instruction(mnemonic="vmatpop.bf16.acc.mxu0", args=VectorArgs(vd=3, vs1=0)),
@@ -104,10 +104,10 @@ class GemmaAttentionProgram(Program):
                 rs1=9,
                 base=OUTPUT_BASE,
                 size=SEQ_LEN * HEAD_DIM * torch.bfloat16.itemsize,
-                flag=4,
+                channel=4,
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=4)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=4)),
     ]
 
     memory_regions: List[Tuple[int, torch.Tensor]] = [

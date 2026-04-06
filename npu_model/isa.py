@@ -1,36 +1,205 @@
-from typing import Callable
-from npu_model.software.instruction import Args
+from typing import Callable, TypeAlias
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 
-class _R:
+@dataclass
+class ScalarArgs:
+    rd: int = 0
+    rs1: int = 0
+    rs2: int = 0
+    imm: int = 0
+
+
+@dataclass
+class VectorArgs:
+    vd: int = 0
+    vs1: int = 0
+    vs2: int = 0
+    rs1: int = 0
+    rs2: int = 0
+    base: int = 0
+    offset: int = 0
+    imm12: int = 0
+    imm: int = 0
+
+
+@dataclass
+class MatrixArgs:
+    vd: int = 0
+    vs1: int = 0
+    vs2: int = 0
+    rd: int = 0
+    rs1: int = 0
+    rs2: int = 0
+
+
+@dataclass
+class DmaArgs:
+    rd: int = 0
+    rs1: int = 0
+    rs2: int = 0
+    size: int = 0
+    channel: int = 0  # FIXME: this is not a real arg. should also be renamed to channel (unless we just want to make 8 different insns)
+
+Args: TypeAlias = ScalarArgs | VectorArgs | MatrixArgs | DmaArgs
+
+def _mask(val: int, bits: int):
+    """returns the first `bits` bits of `val`"""
+    return val & ((1 << bits) - 1)
+
+class AsmInstructionType(ABC):
+    mnemonics: list[str] = []
+
+    @abstractmethod
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args) -> int:
+        raise NotImplementedError()
+
+    def add_mnemonic(self, mnemonic: str):
+        self.mnemonics.append(mnemonic)
+
+class _R(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not (isinstance(args, ScalarArgs) or isinstance(args, DmaArgs)):
+            raise ValueError("Incorrect argument type specified.")
+
+        funct7_b = _mask(funct7,   7)
+        rd_b     = _mask(args.rd,  5)
+        rs1_b    = _mask(args.rs1, 5)
+        rs2_b    = _mask(args.rs2, 5)
+        opcode_b = _mask(opcode,   7)
+        if isinstance(args,DmaArgs):
+            # FIXME: related to the above fixme in DmaArgs — set funct3 to channel for now
+            funct3_b = _mask(args.channel, 3)
+        else:
+            funct3_b = _mask(funct3, 3)
+
+        return (funct7_b << 25) | (rs2_b << 20) | (rs1_b << 15) | (funct3_b << 12) | (rd_b << 7) | opcode_b
     pass
 
-class _I:
+class _I(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not (isinstance(args, ScalarArgs) or isinstance(args, DmaArgs)):
+            raise ValueError("Incorrect argument type specified.")
+
+        rd_b     = _mask(args.rd,  5)
+        rs1_b    = _mask(args.rs1, 5)
+        opcode_b = _mask(opcode,  7)
+        if isinstance(args,DmaArgs):
+            # FIXME: related to the above fixme in DmaArgs — set funct3 to channel for now
+            funct3_b = _mask(args.channel, 3)
+            imm_b    = _mask(args.size, 12)
+        else:
+            funct3_b = _mask(funct3,   3)
+            imm_b    = _mask(args.imm, 12)
+
+        return (imm_b << 20) | (rs1_b << 15) | (funct3_b << 12) | (rd_b << 7) | opcode_b
     pass
 
-class _S:
+class _S(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not (isinstance(args, ScalarArgs)):
+            raise ValueError("Incorrect argument type specified.")
+        
+        imm_b    = _mask(args.imm, 12)
+        imm1_b   = imm_b & 0b000011111111
+        imm2_b   = (imm_b & 0b111100000000) >> 8
+
+        rs2_b    = _mask(args.rs2, 5)
+        rs1_b    = _mask(args.rs1, 5)
+        funct3_b = _mask(funct3,   3)
+        opcode_b = _mask(opcode,   7)
+
+        return (imm1_b << 24) | (rs2_b << 19) | (rs1_b << 14) | (funct3_b << 11) | (imm2_b << 7) | opcode_b
     pass
 
-class _SB:
+class _SB(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not (isinstance(args, ScalarArgs)):
+            raise ValueError("Incorrect argument type specified.")
+        
+        imm_b    = _mask(args.imm, 13)
+        imm12_b  = (imm_b >> 12) & 1
+        imm49_b  = (imm_b >> 5)  & 0x3F
+        imm04_b  = (imm_b >> 1)  & 0xF
+        imm11_b  = (imm_b >> 11) & 1
+        rs2_b    = _mask(args.rs2, 5)
+        rs1_b    = _mask(args.rs1, 5)
+        funct3_b = _mask(funct3,   3)
+        opcode_b = _mask(opcode,   7)
+
+        return (imm12_b << 31) | (imm49_b << 25) | (rs2_b << 20) | (rs1_b << 15) | (funct3_b << 12) | (imm04_b << 8) | (imm11_b << 4) | opcode_b
     pass
 
-class _U:
+class _U(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not (isinstance(args, ScalarArgs)):
+            raise ValueError("Incorrect argument type specified.")
+
+        imm_b    = _mask(args.imm, 20)
+        rd_b     = _mask(args.rd,  5)
+        opcode_b = _mask(opcode,   7)
+
+        return (imm_b << 12) | (rd_b << 7) | opcode_b
     pass
 
-class _UJ:
+class _UJ(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not isinstance(args, ScalarArgs):
+            raise ValueError("Incorrect argument type specified.")
+        
+        imm_b     = _mask(args.imm, 21)
+        imm19_b   = (imm_b >> 20) & 1
+        imm110_b  = (imm_b >> 1) & 0x3ff
+        imm11_b   = (imm_b >> 11) & 1
+        imm1219_b = (imm_b >> 12) & 0xff
+        rd_b      = _mask(args.rd,  5)
+        opcode_b  = _mask(opcode,   7)
+        
+        return (imm19_b << 31) | (imm110_b << 21) | (imm11_b << 20) | (imm1219_b << 12) | (rd_b << 7) | opcode_b
     pass
 
-class _VLS:
+class _VLS(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not isinstance(args, VectorArgs):
+            raise ValueError("Incorrect argument type specified.")
+        
+        imm_b    = _mask(args.imm,  12)
+        rs1_b    = _mask(args.rs1,  5)
+        funct2_b = _mask(funct2,    2)
+        vd_b     = _mask(args.vd,   6)
+        opcode_b = _mask(opcode,    7)
+
+        return (imm_b << 20) | (rs1_b << 15) | (funct2_b << 13) | (vd_b << 7) | opcode_b
     pass
 
-class _VR:
+class _VR(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not (isinstance(args, VectorArgs) or isinstance(args, MatrixArgs)):
+            raise ValueError("Incorrect argument type specified.")
+        
+        funct7_b = _mask(funct7,   7)
+        vs2_b    = _mask(args.vs2, 6)
+        vs1_b    = _mask(args.vs1, 6)
+        vd_b     = _mask(args.vd,  6)
+        opcode_b = _mask(opcode,   7)
+
+        return (funct7_b << 25) | (vs2_b << 19) | (vs1_b << 13) << (vd_b << 7) | opcode_b
     pass
 
-class _VI:
+class _VI(AsmInstructionType):
+    def assemble(self, opcode: int, funct2: int, funct3: int, funct7: int, args: Args):
+        if not isinstance(args, VectorArgs):
+            raise ValueError("Incorrect argument type specified.")
+        
+        imm_b    = _mask(args.imm,  16)
+        funct3_b = _mask(funct3,    2)
+        vd_b     = _mask(args.vd,   6)
+        opcode_b = _mask(opcode,    7)
+        
+        return (imm_b << 16) | (funct3_b << 13) | (vd_b << 7) | opcode_b
     pass
 
 # --- Instruction type namespace ---
-
 
 class InstructionType:
     class SCALAR:
@@ -63,56 +232,24 @@ class InstructionType:
         I = _I()
 
 
-@dataclass
-class ScalarArgs(Args):
-    rd: int = 0
-    rs1: int = 0
-    rs2: int = 0
-    imm: int = 0
-
-
-@dataclass
-class VectorArgs(Args):
-    vd: int = 0
-    vs1: int = 0
-    vs2: int = 0
-    rs1: int = 0
-    rs2: int = 0
-    base: int = 0
-    offset: int = 0
-    imm12: int = 0
-    imm: int = 0
-
-
-@dataclass
-class MatrixArgs(Args):
-    vd: int = 0
-    vs1: int = 0
-    vs2: int = 0
-    rd: int = 0
-    rs1: int = 0
-    rs2: int = 0
-
-
-@dataclass
-class DmaArgs(Args):
-    rd: int = 0
-    rs1: int = 0
-    rs2: int = 0
-    size: int = 0
-    flag: int = 0  # FIXME: this is not a real arg. should also be renamed to channel (unless we just want to make 8 different insns)
-
-
 class Operation:
     def __init__(
         self,
         mnemonic: str,
-        instruction_type: InstructionType,
+        instruction_type: AsmInstructionType,
+        opcode: int,
+        funct2: int,
+        funct3: int,
+        funct7: int,
         effect: Callable,
     ) -> None:
         self.mnemonic = mnemonic
         self.instruction_type = instruction_type
         self.effect = effect
+        self.opcode = opcode
+        self.funct2 = funct2
+        self.funct3 = funct3
+        self.funct7 = funct7
 
     def __str__(self) -> str:
         return self.mnemonic
@@ -177,15 +314,20 @@ _DEFAULT = {
 }
 
 
-def instr(mnemonic, instruction_type: InstructionType):
+def instr(mnemonic, instruction_type: AsmInstructionType, opcode: int, funct2: int = 0, funct3: int = 0, funct7: int = 0):
     if not isinstance(mnemonic, str):
         raise TypeError("@instr decorator must be @instr(<your instruction>)")
 
     def effect(func: Callable) -> Callable:
+        instruction_type.add_mnemonic(mnemonic)
         IsaSpec.operations[mnemonic] = Operation(
             mnemonic=mnemonic,
             instruction_type=instruction_type,
             effect=func,
+            opcode=opcode,
+            funct2=funct2,
+            funct3=funct3,
+            funct7=funct7
         )
 
         return func

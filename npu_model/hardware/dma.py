@@ -5,7 +5,7 @@ from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from .arch_state import ArchState
 from ..software.instruction import Uop
-from ..isa import InstructionType
+from ..isa import InstructionType, AsmInstructionType
 from .stage_data import StageData
 from .config import HardwareConfig
 
@@ -44,8 +44,8 @@ class DmaExecutionUnit(ExecutionUnit):
             self.logger.log_stage_end(uop.id, "E", lane=self.lane_id, cycle=self.cycle)
             self.logger.log_retire(uop.id)
             # clear the flag
-            self.arch_state.clear_flag(uop.insn.args.flag)
-            print(f"DMA {self.name} cleared flag {uop.insn.args.flag}")
+            self.arch_state.clear_flag(uop.insn.args.channel)
+            print(f"DMA {self.name} cleared flag {uop.insn.args.channel}")
             
             if len(self.in_flight) != 0:
                 # Log: start execute
@@ -150,5 +150,5 @@ class DmaExecutionUnit(ExecutionUnit):
         return self._busy_cycles
 
     @property
-    def supported_instruction_types(self) -> List[InstructionType]:
+    def supported_instruction_types(self) -> List[AsmInstructionType]:
         return [InstructionType.DMA.R, InstructionType.DMA.I, InstructionType.BARRIER.I]
