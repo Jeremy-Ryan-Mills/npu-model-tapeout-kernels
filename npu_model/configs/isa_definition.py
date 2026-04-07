@@ -309,7 +309,7 @@ def vredsum_bf16(state: ArchState, args: VectorArgs) -> None:
     summed = x.sum(dim=0)
     result = torch.zeros(x.shape)
     result[0:,] = summed
-    state.write_mrf_bf16(result)
+    state.write_mrf_bf16(args.vd, result)
 
 
 @instr("vsub.bf16", instruction_type=InstructionType.VECTOR.VR, opcode=0b1010111, funct7=0b0000010)
