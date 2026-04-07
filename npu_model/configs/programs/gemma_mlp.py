@@ -33,17 +33,17 @@ class GemmaMlpProgram(Program):
                 rd=0,
                 base=GATE_WEIGHT_BASE,
                 size=GATE_PROJ_WEIGHT_DATA.numel() * 1,  # fp8 = 1 byte
-                flag=0,
+                channel=0,
             ),
         ),
         Instruction(
             mnemonic="dma.load.mxu0",
             args=DmaArgs(
-                rd=1, base=UP_WEIGHT_BASE, size=UP_PROJ_WEIGHT_DATA.numel() * 1, flag=1
+                rd=1, base=UP_WEIGHT_BASE, size=UP_PROJ_WEIGHT_DATA.numel() * 1, channel=1
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=1)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=0)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=1)),
         # --- PHASE 2: Load Activation to MRF ---
         Instruction(
             mnemonic="dma.load",
@@ -51,10 +51,10 @@ class GemmaMlpProgram(Program):
                 rd=0,
                 base=ACTIVATION_DATA_BASE,
                 size=ACTIVATION_DATA.numel() * 1,
-                flag=0,
+                channel=0,
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=0)),
         # --- PHASE 3: Matrix Multiplications ---
         # Gate projection: activation @ gate_weight -> Acc/MRF
         # Note: Using MatrixArgs for matmul
@@ -72,17 +72,17 @@ class GemmaMlpProgram(Program):
         Instruction(
             mnemonic="dma.store",
             args=DmaArgs(
-                rs1=6, base=OUTPUT_DATA_BASE, size=32 * 16 * 2, flag=0  # bf16 = 2 bytes
+                rs1=6, base=OUTPUT_DATA_BASE, size=32 * 16 * 2, channel=0  # bf16 = 2 bytes
             ),
         ),
         Instruction(
             mnemonic="dma.store",
             args=DmaArgs(
-                rs1=7, base=OUTPUT_DATA_BASE + (32 * 16 * 2), size=32 * 16 * 2, flag=1
+                rs1=7, base=OUTPUT_DATA_BASE + (32 * 16 * 2), size=32 * 16 * 2, channel=1
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=1)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=0)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=1)),
     ]
 
     memory_regions: List[Tuple[int, torch.Tensor]] = [

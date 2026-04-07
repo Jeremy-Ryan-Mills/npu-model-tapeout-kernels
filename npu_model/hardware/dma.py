@@ -1,11 +1,11 @@
-from typing import List
+from typing import List, Any
 import math
 
 from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from .arch_state import ArchState
-from ..software.instruction import Uop
-from ..isa import InstructionType
+from ..software.instruction import Uop, is_dma_uop
+from ..isa import InstructionType, AsmInstructionType, DmaArgs
 from .stage_data import StageData
 from .config import HardwareConfig
 
@@ -19,7 +19,7 @@ class DmaExecutionUnit(ExecutionUnit):
         logger: Logger,
         arch_state: ArchState,
         lane_id: int = 0,
-        config: HardwareConfig = None,
+        config: HardwareConfig | None = None,
     ) -> None:
         super().__init__(
             name,
@@ -31,21 +31,22 @@ class DmaExecutionUnit(ExecutionUnit):
         self.reset()
 
     def reset(self) -> None:
-        self.in_flight: List["Uop"] = []
+        self.in_flight: List[Uop[DmaArgs]] = []
         self._complete_count = 0
-        self._pending_completions: List["Uop"] = []
+        self._pending_completions: List[Uop[DmaArgs]] = []
         self._total_instructions = 0
         self._busy_cycles = 0
 
-    def tick(self, idu_output: StageData[Uop | None]) -> None:
+    def tick(self, idu_output: StageData[Uop[Any] | None]) -> None:
         self.cycle += 1
         # Log deferred completions from last cycle
         for uop in self._pending_completions:
+            # FIXME: We should really rewrite this entire thing, this is a terrible way to do args.
             self.logger.log_stage_end(uop.id, "E", lane=self.lane_id, cycle=self.cycle)
             self.logger.log_retire(uop.id)
             # clear the flag
-            self.arch_state.clear_flag(uop.insn.args.flag)
-            print(f"DMA {self.name} cleared flag {uop.insn.args.flag}")
+            self.arch_state.clear_flag(uop.insn.args.channel)
+            print(f"DMA {self.name} cleared flag {uop.insn.args.channel}")
             
             if len(self.in_flight) != 0:
                 # Log: start execute
@@ -68,6 +69,7 @@ class DmaExecutionUnit(ExecutionUnit):
 
             # Accept new instruction
             if uop is not None:
+                assert is_dma_uop(uop), "Invalid arguments passed to DMA Engine"
                 # tag instruction with execution delay
                 uop.execute_delay = max(
                     1,
@@ -109,9 +111,12 @@ class DmaExecutionUnit(ExecutionUnit):
             self.in_flight[0].execute_delay -= 1
             if self.in_flight[0].execute_delay <= 0:
                 # execute the instruction
-                self.in_flight[0].execute_fn(
-                    self.arch_state, self.in_flight[0].insn.args
-                )
+                if self.in_flight[0].execute_fn != None:
+                    self.in_flight[0].execute_fn(
+                        self.arch_state, self.in_flight[0].insn.args
+                    )
+                else:
+                    raise ValueError("No execute function specified for Uop.")
                 self._complete_count = 1
                 # Defer completion logging to next tick
                 self._pending_completions.append(self.in_flight[0])
@@ -150,5 +155,5 @@ class DmaExecutionUnit(ExecutionUnit):
         return self._busy_cycles
 
     @property
-    def supported_instruction_types(self) -> List[InstructionType]:
+    def supported_instruction_types(self) -> List[AsmInstructionType]:
         return [InstructionType.DMA.R, InstructionType.DMA.I, InstructionType.BARRIER.I]

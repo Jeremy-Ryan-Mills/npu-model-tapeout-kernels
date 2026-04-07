@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Any
 from ...software import Instruction, Program
 import torch
 from ...workload.gemma_blocks import gemma_rms_norm_forward
@@ -22,14 +22,14 @@ class GemmaRmsNormProgram(Program):
     Row-wise mean via transpose + vreduce.sum (second-to-last dim) + vbroadcast.cols.
     """
 
-    instructions: List[Instruction] = [
+    instructions: List[Instruction[Any]] = [
         Instruction(
             mnemonic="dma.load",
             args=DmaArgs(
                 rd=0,
                 base=INPUT_BASE,
                 size=INPUT_DATA.numel() * torch.bfloat16.itemsize,
-                flag=0,
+                channel=0,
             ),
         ),
         Instruction(
@@ -38,7 +38,7 @@ class GemmaRmsNormProgram(Program):
                 rd=2,
                 base=EPS_BASE,
                 size=INPUT_DATA.numel() * torch.bfloat16.itemsize,
-                flag=1,
+                channel=1,
             ),
         ),
         Instruction(
@@ -47,12 +47,12 @@ class GemmaRmsNormProgram(Program):
                 rd=8,
                 base=DIVISOR_BASE,
                 size=INPUT_DATA.numel() * torch.bfloat16.itemsize,
-                flag=2,
+                channel=2,
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=1)),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=2)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=0)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=1)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=2)),
         # x_sq = x * x
         Instruction(mnemonic="vmul", args=VectorArgs(vd=3, vs1=0, vs2=0)),
         # Row-wise sum via vrot.reduce.sum -> full (16,64), then reduce + broadcast
@@ -73,10 +73,10 @@ class GemmaRmsNormProgram(Program):
                 rs1=1,
                 base=OUTPUT_BASE,
                 size=INPUT_DATA.numel() * torch.bfloat16.itemsize,
-                flag=0,
+                channel=0,
             ),
         ),
-        Instruction(mnemonic="dma.wait", args=DmaArgs(flag=0)),
+        Instruction(mnemonic="dma.wait", args=DmaArgs(channel=0)),
     ]
 
     memory_regions: List[Tuple[int, torch.Tensor]] = [
