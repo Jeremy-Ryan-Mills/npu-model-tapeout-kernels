@@ -25,8 +25,6 @@ class ArchStateConfig:
     """ Size of dram in bytes. """
     vmem_size: int
     """ Size of vmem in bytes. """
-    imem_size: int
-    """ Size of imem in bytes. """
 
 
 class HardwareConfig:

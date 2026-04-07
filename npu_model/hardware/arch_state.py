@@ -18,7 +18,6 @@ class ArchState:
     def initialize_buffers(self) -> None:
         self.dram: torch.Tensor = torch.zeros(self.cfg.dram_size, dtype=torch.uint8)
         self.vmem: torch.Tensor = torch.zeros(self.cfg.vmem_size, dtype=torch.uint8)
-        self.imem: torch.Tensor = torch.zeros(self.cfg.imem_size, dtype=torch.uint8)
         self.xrf: list[int] = [0] * self.cfg.num_x_registers
         self.csrf: list[int] = [0] * self.cfg.num_csrs
         self.mrf: list[torch.Tensor] = [
@@ -272,19 +271,6 @@ class ArchState:
         self.vmem[base : base + data.numel()] = data
 
     def read_vmem(self, base: int, offset: int, length: int) -> torch.Tensor:
-        assert (
-            base + offset + length <= self.cfg.dram_size
-        ), f"Memory read out of bounds: {base} + {length} > {self.cfg.vmem_size}"
-        return self.vmem[base : base + length]
-
-    def write_imem(self, base: int, data: torch.Tensor):
-        data = data.flatten()
-        assert (
-            base + data.numel() <= self.cfg.imem_size
-        ), f"Memory write out of bounds: {base} + {data.numel()} > {self.cfg.imem_size}"
-        self.imem[base : base + data.numel()] = data
-
-    def read_imem(self, base: int, offset: int, length: int) -> torch.Tensor:
         assert (
             base + offset + length <= self.cfg.dram_size
         ), f"Memory read out of bounds: {base} + {length} > {self.cfg.vmem_size}"
