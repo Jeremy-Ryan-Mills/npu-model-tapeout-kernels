@@ -8,10 +8,12 @@ if __name__ == "__main__":
         mrf_width=32,
         wb_width=32 * 32,
         num_x_registers=32,
+        num_csrs=4,
         num_e_registers=32,
         num_m_registers=64,
         num_wb_registers=2,
-        memory_size=1048576,
+        dram_size=1048576,
+        vmem_size=256 * 1024,
     )
 
     state = ArchState(cfg)
