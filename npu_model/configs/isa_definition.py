@@ -377,8 +377,7 @@ def vadd_bf16(state: ArchState, args: VectorArgs) -> None:
 )
 def vredsum_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
-    result = torch.zeros_like(x)
-    result[0, :] = x.sum(dim=0).to(torch.bfloat16)
+    result = x.sum(dim=0, keepdim=True).to(torch.bfloat16).expand_as(x).contiguous()
     state.write_mrf_bf16(args.vd, result)
 
 
@@ -428,7 +427,7 @@ def vminimum_bf16(state: ArchState, args: VectorArgs) -> None:
 def vredmin_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     result = (
-        x.min(dim=0).values.to(torch.bfloat16).unsqueeze(0).expand_as(x).contiguous()
+        x.min(dim=0, keepdim=True).values.to(torch.bfloat16).expand_as(x).contiguous()
     )
     state.write_mrf_bf16(args.vd, result)
 
@@ -454,7 +453,7 @@ def vmaximum_bf16(state: ArchState, args: VectorArgs) -> None:
 def vredmax_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     result = (
-        x.max(dim=0).values.to(torch.bfloat16).unsqueeze(0).expand_as(x).contiguous()
+        x.max(dim=0, keepdim=True).values.to(torch.bfloat16).expand_as(x).contiguous()
     )
     state.write_mrf_bf16(args.vd, result)
 
@@ -480,7 +479,7 @@ def vredsum_row_bf16(state: ArchState, args: VectorArgs) -> None:
 def vredmin_row_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     result = (
-        x.min(dim=1).values.to(torch.bfloat16).unsqueeze(1).expand_as(x).contiguous()
+        x.min(dim=1, keepdim=True).values.to(torch.bfloat16).expand_as(x).contiguous()
     )
     state.write_mrf_bf16(args.vd, result)
 
@@ -494,7 +493,7 @@ def vredmin_row_bf16(state: ArchState, args: VectorArgs) -> None:
 def vredmax_row_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
     result = (
-        x.max(dim=1).values.to(torch.bfloat16).unsqueeze(1).expand_as(x).contiguous()
+        x.max(dim=1, keepdim=True).values.to(torch.bfloat16).expand_as(x).contiguous()
     )
     state.write_mrf_bf16(args.vd, result)
 
@@ -770,16 +769,10 @@ def delay(state: ArchState, args: ScalarArgs) -> None:
     funct7=0b0000000,
 )
 def vtrpose_xlu(state: ArchState, args: VectorArgs) -> None:
-    assert args.vs1 != state.cfg.num_m_registers - 1
-    assert args.vd != state.cfg.num_m_registers - 1
-    reg_a = state.read_mrf_bf16(args.vs1)
-    reg_b = state.read_mrf_bf16(args.vs1 + 1)
-    combined = torch.stack([reg_a, reg_b])
-    reshaped = combined.view(2, 16, 2)
-    dst_0 = reshaped[:, :, 0].t().reshape(-1)
-    dst_1 = reshaped[:, :, 1].t().reshape(-1)
-    state.write_mrf_bf16(args.vd, dst_0)
-    state.write_mrf_bf16(args.vd + 1, dst_1)
+    reg_in = state.read_mrf_fp8(args.vs1)
+    transposed = reg_in.view(32, 32).t().contiguous().reshape(-1)
+    state.write_mrf_fp8(args.vd, transposed)
+
 
 @instr("jal", instruction_type=InstructionType.SCALAR.UJ, opcode=0b1101111)
 def jal(state: ArchState, args: ScalarArgs) -> None:
