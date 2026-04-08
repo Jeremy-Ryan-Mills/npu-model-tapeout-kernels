@@ -61,6 +61,7 @@ class MatmulProgram(Program):
         ),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=1)),
+        Instruction("delay", args=ScalarArgs(imm=16)),
         # load weights/activations from vmem
         Instruction(
             mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)
@@ -68,28 +69,36 @@ class MatmulProgram(Program):
         Instruction(
             mnemonic="vload", args=VectorArgs(vd=1, rs1=2, imm12=0)
         ),  # mrf[v1] = weights
+        Instruction("delay", args=ScalarArgs(16)),
         # push to weight buffer, matmul, and pop from accumulation buffer
         Instruction(mnemonic="vmatpush.weight.mxu0", args=VectorArgs(vd=0, vs1=1)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
+        # VPU local transfer (1KB) is ~16 cycles at 64B/cycle
+        Instruction(mnemonic="delay", args=ScalarArgs(16)),
         Instruction(mnemonic="vmatmul.mxu0", args=MatrixArgs(vd=0, vs1=0, vs2=0)),
+        # MXU matmul latency is 32 cycles by default; add small slack.
         Instruction(mnemonic="delay", args=ScalarArgs(imm=32)),
         Instruction(mnemonic="vmatpop.bf16.acc.mxu0", args=VectorArgs(vd=2, vs1=0)),
         # store to vmem
         Instruction(mnemonic="vstore", args=VectorArgs(vd=2, rs1=3, imm12=0)),
         Instruction(mnemonic="vstore", args=VectorArgs(vd=3, rs1=3, imm12=32)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=2048)),
+        # Two vstores are ~2x16 cycles; add slack before DMA reads VMEM.
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         # store to dram
         # DRAM_OUTPUT_BASE = 0x0800 (2048)
         # To get 0x800: LUI 1 (0x1000) + ADDI -2048 = 0x0800
         Instruction(mnemonic="lui", args=ScalarArgs(rd=10, imm=1)),
         Instruction(mnemonic="addi", args=ScalarArgs(rd=10, rs1=10, imm=-2048)),
         Instruction(mnemonic="addi", args=ScalarArgs(rd=11, rs1=10, imm=1024)),
+        # IMPORTANT: DMA ops read XRF at *execute* time. Since DMA now has non-trivial
+        # latency (based on XRF[rs2] length), don't mutate x3 between the two stores.
         Instruction(
             mnemonic="dma.store.ch<N>", args=DmaArgs(rd=10, rs1=3, rs2=6, channel=0)
         ),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=3, rs1=3, imm=1024)),
         Instruction(
-            mnemonic="dma.store.ch<N>", args=DmaArgs(rd=11, rs1=3, rs2=6, channel=1)
+            mnemonic="addi", args=ScalarArgs(rd=12, rs1=3, imm=1024)
+        ),  # we cannot mutate x3 during the execution of the first dma store. as such, use x12
+        Instruction(
+            mnemonic="dma.store.ch<N>", args=DmaArgs(rd=11, rs1=12, rs2=6, channel=1)
         ),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=1)),

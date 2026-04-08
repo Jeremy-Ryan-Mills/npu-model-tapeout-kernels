@@ -13,6 +13,19 @@ from .config import HardwareConfig
 class DmaExecutionUnit(ExecutionUnit):
     """Execution unit for matrix operations."""
 
+    def _bytes_for_dma_uop(self, uop: Uop[DmaArgs]) -> int:
+        """
+        Determine transfer size in bytes for DMA ops.
+
+        Current programs conventionally place the byte count in XRF[rs2] for
+        dma.load/store (R-type).
+        """
+        args = uop.insn.args
+        if getattr(args, "rs2", 0):
+            # print("size:", int(self.arch_state.read_xrf(args.rs2)))
+            return int(self.arch_state.read_xrf(args.rs2))
+        return 0
+
     def __init__(
         self,
         name: str,
@@ -47,7 +60,7 @@ class DmaExecutionUnit(ExecutionUnit):
             # clear the flag
             self.arch_state.clear_flag(uop.insn.args.channel)
             print(f"DMA {self.name} cleared flag {uop.insn.args.channel}")
-            
+
             if len(self.in_flight) != 0:
                 # Log: start execute
                 self.logger.log_stage_start(
@@ -71,12 +84,15 @@ class DmaExecutionUnit(ExecutionUnit):
             if uop is not None:
                 assert is_dma_uop(uop), "Invalid arguments passed to DMA Engine"
                 # tag instruction with execution delay
-                uop.execute_delay = max(
-                    1,
-                    math.ceil(
-                        uop.insn.args.size/ self.config.vmem_bytes_per_cycle
-                    ),
-                )
+                if uop.insn.mnemonic == "dma.config.ch<N>":
+                    # Config is a control op; keep it fixed-latency.
+                    uop.execute_delay = 1
+                else:
+                    nbytes = self._bytes_for_dma_uop(uop)
+                    uop.execute_delay = max(
+                        1,
+                        math.ceil(nbytes / self.config.vmem_bytes_per_cycle),
+                    )
                 self.in_flight.append(uop)
                 self._total_instructions += 1
 
