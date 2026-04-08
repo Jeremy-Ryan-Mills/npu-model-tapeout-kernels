@@ -781,29 +781,6 @@ def vtrpose_xlu(state: ArchState, args: VectorArgs) -> None:
     state.write_mrf_bf16(args.vd, dst_0)
     state.write_mrf_bf16(args.vd + 1, dst_1)
 
-
-@instr(
-    "vreduce.max.xlu",
-    instruction_type=InstructionType.VECTOR.VR,
-    opcode=0b1101011,
-    funct7=0b0000001,
-)
-def vreduce_max_xlu(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1).max(dim=1).values
-    state.write_mrf_bf16(args.vd, x)
-
-
-@instr(
-    "vreduce.sum.xlu",
-    instruction_type=InstructionType.VECTOR.VR,
-    opcode=0b1101011,
-    funct7=0b0000010,
-)
-def vreduce_sum_xlu(state: ArchState, args: VectorArgs) -> None:
-    x = state.read_mrf_bf16(args.vs1).sum(dim=1)
-    state.write_mrf_bf16(args.vd, x)
-
-
 @instr("jal", instruction_type=InstructionType.SCALAR.UJ, opcode=0b1101111)
 def jal(state: ArchState, args: ScalarArgs) -> None:
     imm = _sign_extend(args.imm & 0xFFFFF, 20)
