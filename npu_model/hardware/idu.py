@@ -6,7 +6,7 @@ from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from ..isa import IsaSpec, DmaArgs
 from ..hardware.arch_state import ArchState
-from ..isa import InstructionType, AsmInstructionType
+from ..isa import InstructionType, AsmInstructionType, ScalarArgs
 from .exu import *  # noqa: F401, F403
 
 if TYPE_CHECKING:
@@ -103,8 +103,19 @@ class InstructionDecode(Module):
                 uop.id, "D", lane=LaneType.DIU.value, cycle=self.cycle
             )
 
-            # tag instruction with dispatch delay
+            # Tag instruction with dispatch delay.
+            #
+            # Historical behavior: program-level delay is carried in Instruction.delay.
+            # For convenience, allow the `delay` mnemonic to use ScalarArgs.imm as the
+            # stall cycles when Instruction.delay is not set (backward compatible with
+            # existing programs that use delay=... explicitly).
             uop.dispatch_delay = uop.insn.delay
+            if (
+                uop.dispatch_delay == 0
+                and uop.insn.mnemonic == "delay"
+                and isinstance(uop.insn.args, ScalarArgs)
+            ):
+                uop.dispatch_delay = uop.insn.args.imm
             self.uop = uop
 
             if uop.dispatch_delay > 0:

@@ -100,7 +100,8 @@ def _vmatmul(state: ArchState, unit: str, args: MatrixArgs, accumulate: bool) ->
         result_fp16 = result_fp16 + state.read_acc_bf16(unit, _acc_dest_index(args)).to(
             torch.float16
         )
-    state.write_acc_bf16(unit, _acc_dest_index(args), result_fp16.to(torch.bfloat16))
+
+    state.write_acc_bf16(unit, args.vd, result_fp16.to(torch.bfloat16))
 
 
 # =============================================================================
@@ -467,8 +468,9 @@ def vminimum_bf16(state: ArchState, args: VectorArgs) -> None:
 )
 def vredmin_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
-    result = torch.zeros_like(x)
-    result[0, :] = x.min(dim=0).values.to(torch.bfloat16)
+    result = (
+        x.min(dim=0).values.to(torch.bfloat16).unsqueeze(0).expand_as(x).contiguous()
+    )
     state.write_mrf_bf16(args.vd, result)
 
 
@@ -492,8 +494,9 @@ def vmaximum_bf16(state: ArchState, args: VectorArgs) -> None:
 )
 def vredmax_bf16(state: ArchState, args: VectorArgs) -> None:
     x = state.read_mrf_bf16(args.vs1)
-    result = torch.zeros_like(x)
-    result[0, :] = x.max(dim=0).values.to(torch.bfloat16)
+    result = (
+        x.max(dim=0).values.to(torch.bfloat16).unsqueeze(0).expand_as(x).contiguous()
+    )
     state.write_mrf_bf16(args.vd, result)
 
 
@@ -504,9 +507,9 @@ def vredmax_bf16(state: ArchState, args: VectorArgs) -> None:
     funct7=0b0100001,
 )
 def vredsum_row_bf16(state: ArchState, args: VectorArgs) -> None:
+    # REVIEW: broadcast row reduction result to all columns
     x = state.read_mrf_bf16(args.vs1)
-    result = torch.zeros_like(x)
-    result[:, 0] = x.sum(dim=1).to(torch.bfloat16)
+    result = x.sum(dim=1, keepdim=True).to(torch.bfloat16).expand_as(x).contiguous()
     state.write_mrf_bf16(args.vd, result)
 
 
@@ -517,9 +520,11 @@ def vredsum_row_bf16(state: ArchState, args: VectorArgs) -> None:
     funct7=0b0100100,
 )
 def vredmin_row_bf16(state: ArchState, args: VectorArgs) -> None:
+    # REVIEW: broadcast row reduction result to all columns
     x = state.read_mrf_bf16(args.vs1)
-    result = torch.zeros_like(x)
-    result[:, 0] = x.min(dim=1).values.to(torch.bfloat16)
+    result = (
+        x.min(dim=1).values.to(torch.bfloat16).unsqueeze(1).expand_as(x).contiguous()
+    )
     state.write_mrf_bf16(args.vd, result)
 
 
@@ -530,9 +535,11 @@ def vredmin_row_bf16(state: ArchState, args: VectorArgs) -> None:
     funct7=0b0100110,
 )
 def vredmax_row_bf16(state: ArchState, args: VectorArgs) -> None:
+    # REVIEW: broadcast row reduction result to all columns
     x = state.read_mrf_bf16(args.vs1)
-    result = torch.zeros_like(x)
-    result[:, 0] = x.max(dim=1).values.to(torch.bfloat16)
+    result = (
+        x.max(dim=1).values.to(torch.bfloat16).unsqueeze(1).expand_as(x).contiguous()
+    )
     state.write_mrf_bf16(args.vd, result)
 
 
@@ -1014,9 +1021,7 @@ def vmatpush_acc_bf16_mxu0(state: ArchState, args: VectorArgs) -> None:
     funct7=0b0000101,
 )
 def vmatpush_acc_bf16_mxu1(state: ArchState, args: VectorArgs) -> None:
-    state.write_acc_bf16(
-        "mxu1", _acc_dest_index(args), state.read_mrf_bf16_tile(args.vs1)
-    )
+    state.write_acc_bf16("mxu1", args.vd, state.read_mrf_bf16_tile(args.vs1))
 
 
 @instr(
@@ -1026,9 +1031,7 @@ def vmatpush_acc_bf16_mxu1(state: ArchState, args: VectorArgs) -> None:
     funct7=0b0000110,
 )
 def vmatpop_fp8_acc_mxu0(state: ArchState, args: VectorArgs) -> None:
-    quantized = state.read_acc_bf16("mxu0", _acc_source_index(args)).to(
-        torch.float8_e4m3fn
-    )
+    quantized = state.read_acc_bf16("mxu0", args.vs1).to(torch.float8_e4m3fn)
     state.write_mrf_u8(args.vd, quantized.view(torch.uint8))
 
 
@@ -1042,7 +1045,7 @@ def vmatpop_fp8_acc_mxu1(state: ArchState, args: VectorArgs) -> None:
     quantized = state.read_acc_bf16("mxu1", _acc_source_index(args)).to(
         torch.float8_e4m3fn
     )
-    state.write_mrf_u8(args.vd, quantized.view(torch.uint8))
+    state.write_mrf_fp8(args.vd, quantized.view(torch.uint8))
 
 
 @instr(

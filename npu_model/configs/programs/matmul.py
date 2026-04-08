@@ -2,7 +2,7 @@ from typing import List, Tuple, Any
 import torch
 from npu_model.isa import (
     DmaArgs,
-    MatrixArgs, # type: ignore (unused)
+    MatrixArgs,  # type: ignore (unused)
     ScalarArgs,
     VectorArgs,
 )
@@ -64,9 +64,9 @@ class MatmulProgram(Program):
         Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=2, imm12=0)),
         # push to weight buffer, matmul, and pop from accumulation buffer
         Instruction(mnemonic="vmatpush.weight.mxu0", args=VectorArgs(vd=0, vs1=1)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=0), delay=16),
-        Instruction(mnemonic="vmatmul.mxu0", args=VectorArgs(vd=0, vs1=0, vs2=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=0), delay=32),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
+        Instruction(mnemonic="vmatmul.mxu0", args=MatrixArgs(vd=0, vs1=0, vs2=0)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=32)),
         Instruction(mnemonic="vmatpop.bf16.acc.mxu0", args=VectorArgs(vd=2, vs2=0)),
         # store to vmem
         Instruction(mnemonic="vstore", args=VectorArgs(vd=2, rs1=3, imm12=0)),
