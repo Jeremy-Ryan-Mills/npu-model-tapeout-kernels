@@ -1,11 +1,12 @@
 import re
-from typing import TextIO
+from typing import TextIO, List, cast
 
-from ..software.instruction import Instruction
+from ..software.instruction import Instruction, x
 from ..software.program import InstantiableProgram
-from ..isa import InstructionType, ScalarArgs, VectorArgs, MatrixArgs, DmaArgs
-
-# ─── Parsing helpers ────────────────────────────────────────────────────────
+from ..isa import Instruction, IsaSpec
+from ..isa_patterns import InstructionPattern
+from ..configs.isa_definition import ADDI, LUI
+from ..isa_types import ScalarReg
 
 def parse_reg(s: str):
     s = s.strip().rstrip(",").lower()
@@ -16,35 +17,35 @@ def parse_reg(s: str):
         raise ValueError(f"Register out of range: {s}")
     return n
 
-def parse_imm(s: str):
-    s = s.strip().rstrip(",").lower()
-    if s.startswith("0b") or s.startswith("-0b"):
-        return int(s,2)
-    if s.startswith("0x") or s.startswith("-0x"):
-        return int(s,16)
-    return int(s)
-
-def expand_li(rd: int, value: int):
+def expand_li(rd: int, value: int) -> List[Instruction]:
     """Expand LI pseudo-instruction into LUI+ADDI (32-bit)."""
+    if rd < 0 or rd > 31:
+        raise ValueError("Invalid RD provided for LI")
     v = value & 0xFFFFFFFF
     if v >= 0x80000000:
         v -= 0x100000000
     if -2048 <= v <= 2047:
-        return [Instruction(mnemonic="rd", args=ScalarArgs(rd=rd, imm=(v & 0xFFF)))]
+        return [
+            ADDI(rd=ScalarReg(rd), rs1=x(0), imm=(v & 0xFFF))
+        ]
     lo12 = v & 0xFFF
     if lo12 & 0x800:
         lo12 -= 0x1000
     hi20 = ((v - lo12) >> 12) & 0xFFFFF
     if lo12 == 0:
-        return [Instruction(mnemonic="lui", args=ScalarArgs(rd=rd, imm=hi20))]
-    return [Instruction(mnemonic="lui",args=ScalarArgs(rd=rd, imm=hi20)), Instruction(mnemonic="addi", args=ScalarArgs(rd=rd, rs2=rd, imm=(lo12 & 0xFFF)))]
+        return [LUI(rd=ScalarReg(rd), imm=hi20)]
+    
+    return [
+        LUI(rd=ScalarReg(rd), imm=hi20),
+        ADDI(rd=ScalarReg(rd), rs1=ScalarReg(rd), imm=(lo12 & 0xFFF))
+    ]
 
 def strip_comment(line: str):
     idx = line.find("#")
     return line[:idx].strip() if idx >= 0 else line.strip()
 
 def tokenize(line: str):
-    return [t for t in re.split(r"[\s,]+", strip_comment(line)) if t]
+    return [t.rstrip(',') for t in re.split(r"[\s,]+", strip_comment(line)) if t]
 
 def input_to_program(source: TextIO):
     lines: list[str] = []
@@ -66,7 +67,7 @@ def input_to_program(source: TextIO):
             if tokens:
                 if tokens[0].lower() == "li":
                     if len(tokens) > 2:
-                        addr += len(expand_li(0,parse_imm(tokens[2])))
+                        addr += len(expand_li(0,int(tokens[2], 0)))
                     else:
                         raise ValueError(f"Malformed Instruction: {line}")
                 else:
@@ -79,7 +80,7 @@ def input_to_program(source: TextIO):
     def resolve(s: str):
         if s in labels:
             return labels[s] - pc
-        return parse_imm(s)
+        return int(s, 0)
 
     for line in lines:
         if line.endswith(":"):
@@ -93,88 +94,22 @@ def input_to_program(source: TextIO):
 
         # Handle pseudoinstructions
         if mnemonic == "nop" and len(tokens) == 1:
-            instructions.append(Instruction(mnemonic="addi", args=ScalarArgs()))
+            instructions.append(ADDI(x(0), x(0), 0))
             pc += 1
         elif mnemonic == "li" and len(tokens) == 3:
-            e = expand_li(parse_reg(tokens[1]), parse_imm(tokens[2]))
+            e = expand_li(parse_reg(tokens[1]), int(tokens[2], 0))
             instructions.extend(e)
             pc += len(e)
-        
-        # Handle weird representations (DMA R/I)
-        elif ((mnemonic.startswith("dma.load.ch") and len(mnemonic) == 11) or
-              (mnemonic.startswith("dma.store.ch") and len(mnemonic) == 13)) and mnemonic[-1].isdigit() and len(tokens) == 4:
-            # FIXME: This allows any single-digit channel to work.
-            # I'm leaving this in since I think this should be fixed in Instruction()
-            channel = int(mnemonic[-1])
-            instructions.append(Instruction(mnemonic=f"{mnemonic[:-1]}<N>", args=DmaArgs(rd=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), rs2=parse_reg(tokens[3]), channel=channel)))
-        elif mnemonic.startswith("dma.config.ch") and len(mnemonic) == 14 and mnemonic[-1].isdigit() and len(tokens) == 2:
-            channel = int(mnemonic[-1])
-            instructions.append(Instruction(mnemonic=f"dma.config.ch<N>", args=DmaArgs(rs1=parse_reg(tokens[2]), channel=channel)))
-        elif mnemonic.startswith("dma.wait.ch") and len(mnemonic) == 12 and mnemonic[-1].isdigit() and len(tokens) == 2:
-            channel = int(mnemonic[-1])
-            instructions.append(Instruction(mnemonic=f"dma.wait.ch<N>", args=DmaArgs(channel=channel)))
-        
-        # Handle shifts/ecall/ebreak/fence (custom immediate values only based on name)
-        elif (mnemonic == "srli" or mnemonic == "slli") and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), imm=(parse_imm(tokens[3]) & 0x1f))))
-        elif mnemonic == "srai" and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), imm=((parse_imm(tokens[3]) & 0x1f) | 0x400))))
-        elif (mnemonic == "fence" or mnemonic == "ecall") and len(tokens) == 1:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs()))
-        elif mnemonic == "ebreak" and len(tokens) == 1:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(imm=0b000000000001)))
-
-        # Handle all scalar I-type instructions
-        # FIXME: currently loads don't support the syntax of lw rd, offset(rs1) — they're just lw, rd, rs1, offset
-        elif (mnemonic in InstructionType.SCALAR.I.mnemonics or mnemonic in InstructionType.DELAY.I.mnemonics) and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), imm=parse_imm(tokens[3]))))
-
-        # Handle all scalar R-type instructions
-        elif mnemonic in InstructionType.SCALAR.R.mnemonics and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), rs2=parse_reg(tokens[3]))))
-
-        # Handle all scalar S-type instructions
-        # FIXME: Same thing as loads.
-        elif mnemonic in InstructionType.SCALAR.S.mnemonics and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rs2=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), imm=parse_imm(tokens[3]))))
-
-        # Handle all scalar SB-type instructions
-        elif mnemonic in InstructionType.SCALAR.SB.mnemonics and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rs1=parse_reg(tokens[1]), rs2=parse_reg(tokens[2]), imm=resolve(tokens[3]))))
-
-        # Handle all scalar U-type instructions
-        elif mnemonic in InstructionType.SCALAR.U.mnemonics and len(tokens) == 3:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), imm=parse_imm(tokens[2]))))
-
-        # Handle all scalar UJ-type instructions
-        elif mnemonic in InstructionType.SCALAR.UJ.mnemonics and len(tokens) == 3:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), imm=resolve(tokens[2]))))
-
-        # Handle all vector VLS-type instructions
-        elif mnemonic in InstructionType.VECTOR.VLS.mnemonics and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=VectorArgs(vd=parse_reg(tokens[1]), rs1=parse_reg(tokens[2]), imm12=parse_imm(tokens[3]))))
-
-        # Handle all vector VR-type instructions
-        # some instructions use vs2
-        elif mnemonic in InstructionType.VECTOR.VR.mnemonics and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=VectorArgs(vd=parse_reg(tokens[1]), vs1=parse_reg(tokens[2]), vs2=parse_reg(tokens[3]))))
-
-        # some don't
-        # FIXME: we don't currently error if you try to use 3 arguments on a 2-argument instr. (and vice versa)
-        elif mnemonic in InstructionType.VECTOR.VR.mnemonics and len(tokens) == 3:
-            instructions.append(Instruction(mnemonic=mnemonic, args=VectorArgs(vd=parse_reg(tokens[1]), vs1=parse_reg(tokens[2]))))
-
-
-        # Handle all vector VI-type instructions
-        elif mnemonic in InstructionType.VECTOR.VI.mnemonics and len(tokens) == 3:
-            instructions.append(Instruction(mnemonic=mnemonic, args=ScalarArgs(rd=parse_reg(tokens[1]), imm=parse_imm(tokens[2]))))
-
-        # Handle all matrix VR-type instructions — only matmul so all use both args
-        elif mnemonic in InstructionType.MATRIX_SYSTOLIC.VR.mnemonics or \
-            mnemonic in InstructionType.MATRIX_IPT.VR.mnemonics and len(tokens) == 4:
-            instructions.append(Instruction(mnemonic=mnemonic, args=MatrixArgs(vd=parse_reg(tokens[1]), vs1=parse_reg(tokens[2]), vs2=parse_reg(tokens[3]))))
-
         else:
-            raise ValueError(f"Malformed Instruction: {line}")
+            try:
+                # TODO: This doesn't handle labels. I think we should have `from_asm`
+                # accept the resolve function and use it for label-friendly imms.
+                # i don't wanna deal with this rn, they should all subclass both
+                instr = cast(InstructionPattern, IsaSpec.operations[mnemonic])
+
+                if instr.accepts(tokens):
+                    instructions.append(cast(Instruction, instr.from_asm(tokens, resolve)))
+            except KeyError:
+                raise ValueError(f"Invalid mnemonic provided: {line}")
     
     return InstantiableProgram(instructions)

@@ -29,9 +29,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
+from ...software import m, x, Program
 
+from npu_model.configs.isa_definition import *
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. MLIR definition — the exact op from SmolVLA's global-optimization IR.
@@ -39,6 +39,7 @@ from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
 # ═══════════════════════════════════════════════════════════════════════════
 
 SILU_MLIR = """\
+#hal.executable.target<cpu="host">
 func.func @silu(%arg0: tensor<32x16xf32>) -> tensor<32x16xf32> {
   %empty = tensor.empty() : tensor<32x16xf32>
   %result = linalg.generic {
@@ -119,31 +120,31 @@ class SmolVLASiluProgram(Program):
 
     instructions: List[Instruction[Any]] = [
         # ── Scalar register setup ──
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=1, rs1=0, imm=VMEM_INPUT_BASE)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=2, rs1=0, imm=VMEM_OUTPUT_BASE)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=3, rs1=0, imm=DRAM_INPUT_BASE)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=4, rs1=0, imm=DRAM_OUTPUT_BASE)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=5, rs1=0, imm=TILE_BYTES)),
+        ADDI(rd=x(1), rs1=x(0), imm=VMEM_INPUT_BASE),
+        ADDI(rd=x(2), rs1=x(0), imm=VMEM_OUTPUT_BASE),
+        ADDI(rd=x(3), rs1=x(0), imm=DRAM_INPUT_BASE),
+        ADDI(rd=x(4), rs1=x(0), imm=DRAM_OUTPUT_BASE),
+        ADDI(rd=x(5), rs1=x(0), imm=TILE_BYTES),
         # ── DMA: DRAM → VMEM ──
-        Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, channel=0)),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-        Instruction(mnemonic="dma.load.ch<N>", args=DmaArgs(rd=1, rs1=3, rs2=5, channel=0)),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
+        DMA_CONFIG_CH0(rs1=x(0)),
+        DMA_WAIT_CH0(),
+        DMA_LOAD_CH0(rd=x(1), rs1=x(3), rs2=x(5)),
+        DMA_WAIT_CH0(),
         # ── Load input to MRF + constants ──
-        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),   # v0 = x
-        Instruction(mnemonic="vli.all", args=VectorArgs(vd=1, imm=-1)),          # v1 = -1.0
-        Instruction(mnemonic="vli.all", args=VectorArgs(vd=2, imm=1)),           # v2 = +1.0
+        VLOAD(vd=m(0), rs1=x(1), imm=0),   # v0 = x
+        VLI_ALL(vd=m(1), imm=-1),          # v1 = -1.0
+        VLI_ALL(vd=m(2), imm=1),           # v2 = +1.0
         # ── SiLU: x / (1 + exp(-x)) ──
-        Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=3, vs1=0, vs2=1)),  # v3 = -x
-        Instruction(mnemonic="vexp.bf16", args=VectorArgs(vd=4, vs1=3)),          # v4 = exp(-x)
-        Instruction(mnemonic="vadd.bf16", args=VectorArgs(vd=5, vs1=4, vs2=2)),  # v5 = 1+exp(-x)
-        Instruction(mnemonic="vrecip.bf16", args=VectorArgs(vd=6, vs1=5)),        # v6 = sigmoid(x)
-        Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=7, vs1=0, vs2=6)),  # v7 = silu(x)
+        VMUL_BF16(vd=m(3), vs1=m(0), vs2=m(1)),  # v3 = -x
+        VEXP_BF16(vd=m(4), vs1=m(3)),          # v4 = exp(-x
+        VADD_BF16(vd=m(5), vs1=m(4), vs2=m(2)),  # v5 = 1+exp(-x
+        VRECIP_BF16(vd=m(6), vs1=m(5)),        # v6 = sigmoid(x
+        VMUL_BF16(vd=m(7), vs1=m(0), vs2=m(6)),  # v7 = silu(x
         # ── Store: MRF → VMEM → DRAM ──
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=7, rs1=2, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=20)),
-        Instruction(mnemonic="dma.store.ch<N>", args=DmaArgs(rd=4, rs1=2, rs2=5, channel=0)),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
+        VSTORE(vd=m(7), rs1=x(2), imm=0),
+        DELAY(imm=20),
+        DMA_STORE_CH0(rd=x(4), rs1=x(2), rs2=x(5)),
+        DMA_WAIT_CH0(),
     ]
 
     memory_regions: List[Tuple[int, torch.Tensor]] = [

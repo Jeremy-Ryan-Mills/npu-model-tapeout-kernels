@@ -14,6 +14,7 @@ __all__ = [
     "InstructionDecode",
     "ExecutionUnit",
     "ScalarExecutionUnit",
-    "MatrixExecutionUnit",
+    "MatrixExecutionUnitInner",
+    "MatrixExecutionUnitSystolic",
     "DmaExecutionUnit",
 ]

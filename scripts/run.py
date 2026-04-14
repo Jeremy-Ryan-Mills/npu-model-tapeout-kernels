@@ -13,8 +13,6 @@ Options:
 
 import argparse
 
-import torch
-
 import npu_model
 from npu_model.logging import LoggerConfig
 from npu_model.simulation import Simulation

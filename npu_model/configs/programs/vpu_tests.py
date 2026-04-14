@@ -1,11 +1,8 @@
-from typing import List, Tuple, Any
-from ...software import Instruction, Program
+from ...software import m, x, Program
+from npu_model.isa import Instruction
 import torch
-from npu_model.isa import (
-    DmaArgs,
-    ScalarArgs,
-    VectorArgs,
-)
+
+from npu_model.configs.isa_definition import *
 
 # Memory layout (DRAM is program-loaded; VMEM is scratchpad accessed by vload/vstore)
 DRAM_INPUT_BASE = 0x0000
@@ -23,48 +20,38 @@ class VectorArithmeticProgram(Program):
     Basic arithmetic correctness
     """
 
-    instructions: List[Instruction[Any]] = [
+    instructions: list[Instruction] = [
         # Set up base addresses and transfer size (bytes)
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=1, rs1=0, imm=VMEM_INPUT_BASE)),
-        Instruction(
-            mnemonic="addi", args=ScalarArgs(rd=2, rs1=0, imm=VMEM_OUTPUT_BASE)
-        ),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=3, rs1=0, imm=DRAM_INPUT_BASE)),
-        Instruction(
-            mnemonic="addi", args=ScalarArgs(rd=4, rs1=0, imm=DRAM_OUTPUT_BASE)
-        ),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=5, rs1=0, imm=1024)),
+        ADDI(rd=x(1), rs1=x(0), imm=VMEM_INPUT_BASE),
+        ADDI(rd=x(2), rs1=x(0), imm=VMEM_OUTPUT_BASE),
+        ADDI(rd=x(3), rs1=x(0), imm=DRAM_INPUT_BASE),
+        ADDI(rd=x(4), rs1=x(0), imm=DRAM_OUTPUT_BASE),
+        ADDI(rd=x(5), rs1=x(0), imm=1024),
         # DRAM -> VMEM
-        Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, channel=0)),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-        Instruction(
-            mnemonic="dma.load.ch<N>",
-            args=DmaArgs(rd=1, rs1=3, rs2=5, channel=0),
-        ),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-        Instruction("delay", args=ScalarArgs(imm=16)),
+        DMA_CONFIG_CH0(rs1=x(0)),
+        DMA_WAIT_CH0(),
+        DMA_LOAD_CH0(rd=x(1), rs1=x(3), rs2=x(5)),
+        DMA_WAIT_CH0(),
+        DELAY(imm=16),
         # VMEM -> MRF, compute, MRF -> VMEM
-        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),
-        Instruction("delay", args=ScalarArgs(imm=16)),
-        Instruction(mnemonic="vadd.bf16", args=VectorArgs(vd=1, vs1=0, vs2=0)),
-        Instruction("delay", args=ScalarArgs(imm=32)),
-        Instruction(mnemonic="vsub.bf16", args=VectorArgs(vd=2, vs1=1, vs2=0)),
-        Instruction("delay", args=ScalarArgs(imm=32)),
-        Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=3, vs1=2, vs2=0)),
-        Instruction("delay", args=ScalarArgs(imm=32)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=3, rs1=2, imm12=0)),
+        VLOAD(vd=m(0), rs1=x(1), imm=0),
+        DELAY(imm=16),
+        VADD_BF16(vd=m(1), vs1=m(0), vs2=m(0)),
+        DELAY(imm=32),
+        VSUB_BF16(vd=m(2), vs1=m(1), vs2=m(0)),
+        DELAY(imm=32),
+        VMUL_BF16(vd=m(3), vs1=m(2), vs2=m(0)),
+        DELAY(imm=32),
+        VSTORE(vd=m(3), rs1=x(2), imm=0),
         # Ensure the VPU has time to commit the VMEM write before DMA reads it.
         # There is currently no explicit VPU↔DMA memory ordering primitive in the model.
-        Instruction("delay", args=ScalarArgs(imm=16)),
+        DELAY(imm=16),
         # VMEM -> DRAM
-        Instruction(
-            mnemonic="dma.store.ch<N>",
-            args=DmaArgs(rd=4, rs1=2, rs2=5, channel=0),
-        ),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
+        DMA_STORE_CH0(rd=x(4), rs1=x(2), rs2=x(5)),
+        DMA_WAIT_CH0(),
     ]
 
-    memory_regions: List[Tuple[int, torch.Tensor]] = [
+    memory_regions: list[tuple[int, torch.Tensor]] = [
         (DRAM_INPUT_BASE, INPUT),
     ]
 

@@ -1,9 +1,11 @@
-from typing import List, Any
+import torch
 from npu_model.isa import *
 from ...software import (
-    Instruction,
+    a, m, x, w,
     Program,
 )
+
+from ..isa_definition import ADDI, BLT, DELAY, VMATMUL_MXU1
 
 
 class AddiProgram(Program):
@@ -11,14 +13,16 @@ class AddiProgram(Program):
     A simple addi program with a branch and a matmul.
     """
 
-    instructions: List[Instruction[Any]] = [
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=1, rs1=1, imm=0)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=2, rs1=2, imm=8)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=1, rs1=1, imm=1)),
-        Instruction(mnemonic="blt", args=ScalarArgs(rs1=1, rs2=2, imm=-1)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=3)),
-        Instruction(mnemonic="vmatmul.mxu1", args=MatrixArgs(vd=1, vs1=1, vs2=1)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=4, rs1=4, imm=1)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=5, rs1=5, imm=1)),
-        Instruction(mnemonic="delay", args=ScalarArgs()),
+    instructions: list[Instruction] = [
+        ADDI(rd=x(1), rs1=x(1), imm=0),
+        ADDI(rd=x(2), rs1=x(2), imm=8),
+        ADDI(rd=x(1), rs1=x(1), imm=1),
+        BLT(rs1=x(1), rs2=x(2), imm=-1),
+        DELAY(imm=3),
+        VMATMUL_MXU1(vd=a(1), vs1=m(1), vs2=w(1)),
+        ADDI(rd=x(4), rs1=x(4), imm=1),
+        ADDI(rd=x(5), rs1=x(5), imm=1),
+        DELAY(imm=0)
     ]
+
+    memory_regions: list[tuple[int, torch.Tensor]] = []

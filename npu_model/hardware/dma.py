@@ -1,11 +1,10 @@
-from typing import List, Any
 import math
 
 from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from .arch_state import ArchState
-from ..software.instruction import Uop, is_dma_uop
-from ..isa import InstructionType, AsmInstructionType, DmaArgs
+from ..software.instruction import Uop
+from ..isa import RType, EXU, is_scalar_itype
 from .stage_data import StageData
 from .config import HardwareConfig
 
@@ -13,17 +12,16 @@ from .config import HardwareConfig
 class DmaExecutionUnit(ExecutionUnit):
     """Execution unit for matrix operations."""
 
-    def _bytes_for_dma_uop(self, uop: Uop[DmaArgs]) -> int:
+    def _bytes_for_dma_uop(self, uop: Uop) -> int:
         """
         Determine transfer size in bytes for DMA ops.
 
         Current programs conventionally place the byte count in XRF[rs2] for
         dma.load/store (R-type).
         """
-        args = uop.insn.args
-        if getattr(args, "rs2", 0):
+        if isinstance(uop.insn, RType):
             # print("size:", int(self.arch_state.read_xrf(args.rs2)))
-            return int(self.arch_state.read_xrf(args.rs2))
+            return int(self.arch_state.read_xrf(uop.insn.rs2))
         return 0
 
     def __init__(
@@ -44,22 +42,24 @@ class DmaExecutionUnit(ExecutionUnit):
         self.reset()
 
     def reset(self) -> None:
-        self.in_flight: List[Uop[DmaArgs]] = []
+        self.in_flight: list[Uop] = []
         self._complete_count = 0
-        self._pending_completions: List[Uop[DmaArgs]] = []
+        self._pending_completions: list[Uop] = []
         self._total_instructions = 0
         self._busy_cycles = 0
 
-    def tick(self, idu_output: StageData[Uop[Any] | None]) -> None:
+    def tick(self, idu_output: StageData[Uop | None]) -> None:
         self.cycle += 1
         # Log deferred completions from last cycle
         for uop in self._pending_completions:
-            # FIXME: We should really rewrite this entire thing, this is a terrible way to do args.
+            if not (is_scalar_itype(uop.insn) or isinstance(uop.insn, RType)):
+                raise ValueError("Invalid Instruction format provided to DMA.")
+
             self.logger.log_stage_end(uop.id, "E", lane=self.lane_id, cycle=self.cycle)
             self.logger.log_retire(uop.id)
             # clear the flag
-            self.arch_state.clear_flag(uop.insn.args.channel)
-            print(f"DMA {self.name} cleared flag {uop.insn.args.channel}")
+            self.arch_state.clear_flag(uop.insn.funct3)
+            print(f"DMA {self.name} cleared flag {uop.insn.funct3}")
 
             if len(self.in_flight) != 0:
                 # Log: start execute
@@ -82,7 +82,7 @@ class DmaExecutionUnit(ExecutionUnit):
 
             # Accept new instruction
             if uop is not None:
-                assert is_dma_uop(uop), "Invalid arguments passed to DMA Engine"
+                assert uop.insn.exu == EXU.DMA, "Invalid arguments passed to DMA Engine"
                 # tag instruction with execution delay
                 if uop.insn.mnemonic == "dma.config.ch<N>":
                     # Config is a control op; keep it fixed-latency.
@@ -127,12 +127,7 @@ class DmaExecutionUnit(ExecutionUnit):
             self.in_flight[0].execute_delay -= 1
             if self.in_flight[0].execute_delay <= 0:
                 # execute the instruction
-                if self.in_flight[0].execute_fn != None:
-                    self.in_flight[0].execute_fn(
-                        self.arch_state, self.in_flight[0].insn.args
-                    )
-                else:
-                    raise ValueError("No execute function specified for Uop.")
+                self.in_flight[0].insn.exec(self.arch_state)
                 self._complete_count = 1
                 # Defer completion logging to next tick
                 self._pending_completions.append(self.in_flight[0])
@@ -169,7 +164,3 @@ class DmaExecutionUnit(ExecutionUnit):
     def busy_cycles(self) -> int:
         """Number of cycles the EXU was busy."""
         return self._busy_cycles
-
-    @property
-    def supported_instruction_types(self) -> List[AsmInstructionType]:
-        return [InstructionType.DMA.R, InstructionType.DMA.I, InstructionType.BARRIER.I]
