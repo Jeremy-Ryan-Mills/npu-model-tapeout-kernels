@@ -81,9 +81,10 @@ class RType(Instruction, instr=False):
         )
 
     def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, funct7: Funct7L, mnemonic: str | None = None) -> None:
+        mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct3 = Funct3(funct3)
         cls.funct7 = Funct7(funct7)
-        IsaSpec.R[cls.mnemonic] = cls
+        IsaSpec.R[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
 
 class IType[Reg: (ScalarReg, ExponentReg) = ScalarReg](Instruction, instr=False):
@@ -105,9 +106,10 @@ class IType[Reg: (ScalarReg, ExponentReg) = ScalarReg](Instruction, instr=False)
         return (imm_b << 20) | (rs1_b << 15) | (funct3_b << 12) | (rd_b << 7) | opcode_b
     
     def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, funct7: Funct7L, mnemonic: str | None = None) -> None:
+        mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct3 = Funct3(funct3)
         cls.funct7 = Funct7(funct7)
-        IsaSpec.I[cls.mnemonic] = cls
+        IsaSpec.I[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
     
 class SType(Instruction, instr=False):
@@ -136,8 +138,9 @@ class SType(Instruction, instr=False):
         )
     
     def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, mnemonic: str | None = None) -> None:
+        mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct3 = Funct3(funct3)
-        IsaSpec.S[cls.mnemonic] = cls
+        IsaSpec.S[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
 
 class SBType(Instruction, instr=False):

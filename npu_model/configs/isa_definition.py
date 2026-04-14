@@ -1,6 +1,5 @@
+from typing import TYPE_CHECKING
 import torch
-
-from npu_model.hardware.arch_state import ArchState
 from npu_model.isa import (
     CSRType,
     IType,
@@ -45,6 +44,9 @@ from npu_model.isa_types import (
     Imm12,
     EXU
 )
+
+if TYPE_CHECKING:
+    from npu_model.hardware.arch_state import ArchState
 
 PIPELINE_LATENCY = 2
 
