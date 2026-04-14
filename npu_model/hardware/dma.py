@@ -1,16 +1,30 @@
 import math
 
-from .exu import ExecutionUnit
-from ..logging.logger import Logger, LaneType
-from .arch_state import ArchState
+from ..isa import EXU, RType, is_scalar_itype
+from ..logging.logger import LaneType, Logger
 from ..software.instruction import Uop
-from ..isa import RType, EXU, is_scalar_itype
-from .stage_data import StageData
+from .arch_state import ArchState
 from .config import HardwareConfig
+from .exu import ExecutionUnit
+from .stage_data import StageData
 
 
 class DmaExecutionUnit(ExecutionUnit):
-    """Execution unit for matrix operations."""
+    """
+    Execution unit for DMA (Direct Memory Access) operations.
+    Handles data transfers between DRAM and VMEM.
+
+    Supports up to 8 in-flight DMA instructions at once, queuing them in
+    order and executing them head-of-line. Transfer latency is computed from
+    the byte count stored in XRF[rs2] divided by the configured VMEM
+    bandwidth (vmem_bytes_per_cycle), with a minimum of 1 cycle.
+    Config ops (dma.config.ch<N>) are treated as fixed 1-cycle control ops.
+
+    Completion logging is deferred by one cycle so that the Kanata trace
+    reflects the cycle in which results become visible, and the corresponding
+    channel flag is cleared on completion to unblock any waiting dma.wait.ch<N>
+    instructions held in the DIU.
+    """
 
     def _bytes_for_dma_uop(self, uop: Uop) -> int:
         """

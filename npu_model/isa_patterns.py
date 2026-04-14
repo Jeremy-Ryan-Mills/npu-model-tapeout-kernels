@@ -368,6 +368,7 @@ class ScalarComputeShamt(InstructionPattern):
         rs1: The source scalar register.
         shamt: A 5-bit immediate value.
     """
+    UPPER_IMM: int = 0b0000000
     rd: ScalarReg
     rs1: ScalarReg
     imm: Imm12
@@ -395,7 +396,7 @@ class ScalarComputeShamt(InstructionPattern):
         self.rd = rd
         self.rs1 = rs1
         # Done like this on purpose so it doesn't need custom isa types.
-        self.imm = Imm12(Shamt(imm)) 
+        self.imm = Imm12((self.UPPER_IMM << 5) | Shamt(imm)) 
 
 @dataclass(init=False)
 class ScalarBranchImm(InstructionPattern):
@@ -626,7 +627,7 @@ class MXUWeightPush(InstructionPattern):
         vd: The destination tensor register.
         vs1: The source tensor register.
     """
-    vd: WeightBufferIndex
+    vd: WeightBuffer
     vs1: MatrixReg
 
     @classmethod
@@ -634,7 +635,7 @@ class MXUWeightPush(InstructionPattern):
         if tokens[0] != cls.mnemonic:
             raise ValueError(f"Attempted to construct {cls.mnemonic} with tokens for {tokens[0]}.")
 
-        vd = WeightBufferIndex(tokens[1])
+        vd = WeightBuffer(tokens[1])
         vs1 = MatrixReg(tokens[2])
 
         return cls(
@@ -644,7 +645,7 @@ class MXUWeightPush(InstructionPattern):
     
     @classmethod
     def accepts(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> bool:
-        return len(tokens) == 3 and tokens[0] == cls.mnemonic and WeightBufferIndex.accepts(tokens[1]) and MatrixReg.accepts(tokens[2])
+        return len(tokens) == 3 and tokens[0] == cls.mnemonic and WeightBuffer.accepts(tokens[1]) and MatrixReg.accepts(tokens[2])
 
 @dataclass()
 class MXUAccumulatorPush(InstructionPattern):
@@ -658,7 +659,7 @@ class MXUAccumulatorPush(InstructionPattern):
         vd: The destination tensor register.
         vs1: The source tensor register.
     """
-    vd: AccumulatorIndex
+    vd: Accumulator
     vs1: MatrixReg
 
     @classmethod
@@ -666,7 +667,7 @@ class MXUAccumulatorPush(InstructionPattern):
         if tokens[0] != cls.mnemonic:
             raise ValueError(f"Attempted to construct {cls.mnemonic} with tokens for {tokens[0]}.")
 
-        vd = AccumulatorIndex(tokens[1])
+        vd = Accumulator(tokens[1])
         vs1 = MatrixReg(tokens[2])
 
         return cls(
@@ -676,7 +677,7 @@ class MXUAccumulatorPush(InstructionPattern):
     
     @classmethod
     def accepts(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> bool:
-        return len(tokens) == 3 and tokens[0] == cls.mnemonic and AccumulatorIndex.accepts(tokens[1]) and MatrixReg.accepts(tokens[2])
+        return len(tokens) == 3 and tokens[0] == cls.mnemonic and Accumulator.accepts(tokens[1]) and MatrixReg.accepts(tokens[2])
 
 @dataclass()
 class MXUAccumulatorPopE1(InstructionPattern):
@@ -692,7 +693,7 @@ class MXUAccumulatorPopE1(InstructionPattern):
     """
     vd: MatrixReg
     es1: ExponentReg
-    vs2: AccumulatorIndex
+    vs2: Accumulator
 
     @classmethod
     def from_asm(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> Self:
@@ -700,7 +701,7 @@ class MXUAccumulatorPopE1(InstructionPattern):
             raise ValueError(f"Attempted to construct {cls.mnemonic} with tokens for {tokens[0]}.")
 
         vd = MatrixReg(tokens[1])
-        vs2 = AccumulatorIndex(tokens[3])
+        vs2 = Accumulator(tokens[3])
         es1 = ExponentReg(tokens[2])
 
         return cls(
@@ -711,7 +712,7 @@ class MXUAccumulatorPopE1(InstructionPattern):
     
     @classmethod
     def accepts(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> bool:
-        return len(tokens) == 4 and tokens[0] == cls.mnemonic and MatrixReg.accepts(tokens[1]) and AccumulatorIndex.accepts(tokens[2]) and ExponentReg.accepts(tokens[3])
+        return len(tokens) == 4 and tokens[0] == cls.mnemonic and MatrixReg.accepts(tokens[1]) and Accumulator.accepts(tokens[2]) and ExponentReg.accepts(tokens[3])
 
 @dataclass()
 class MXUAccumulatorPop(InstructionPattern):
@@ -726,7 +727,7 @@ class MXUAccumulatorPop(InstructionPattern):
         vs1: The source tensor register.
     """
     vd: MatrixReg
-    vs2: AccumulatorIndex
+    vs2: Accumulator
 
     @classmethod
     def from_asm(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> Self:
@@ -734,7 +735,7 @@ class MXUAccumulatorPop(InstructionPattern):
             raise ValueError(f"Attempted to construct {cls.mnemonic} with tokens for {tokens[0]}.")
 
         vd = MatrixReg(tokens[1])
-        vs2 = AccumulatorIndex(tokens[2])
+        vs2 = Accumulator(tokens[2])
 
         return cls(
             vd=vd,
@@ -743,7 +744,7 @@ class MXUAccumulatorPop(InstructionPattern):
     
     @classmethod
     def accepts(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> bool:
-        return len(tokens) == 3 and tokens[0] == cls.mnemonic and MatrixReg.accepts(tokens[1]) and AccumulatorIndex.accepts(tokens[2])
+        return len(tokens) == 3 and tokens[0] == cls.mnemonic and MatrixReg.accepts(tokens[1]) and Accumulator.accepts(tokens[2])
 
 @dataclass()
 class MXUMatMul(InstructionPattern):
@@ -758,18 +759,18 @@ class MXUMatMul(InstructionPattern):
         vs1: The source matrix.
         vs2: The source weights
     """
-    vd: AccumulatorIndex
+    vd: Accumulator
     vs1: MatrixReg
-    vs2: WeightBufferIndex
+    vs2: WeightBuffer
 
     @classmethod
     def from_asm(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> Self:
         if tokens[0] != cls.mnemonic:
             raise ValueError(f"Attempted to construct {cls.mnemonic} with tokens for {tokens[0]}.")
 
-        vd = AccumulatorIndex(tokens[1])
+        vd = Accumulator(tokens[1])
         vs1 = MatrixReg(tokens[2])
-        vs2 = WeightBufferIndex(tokens[3])
+        vs2 = WeightBuffer(tokens[3])
 
         return cls(
             vd=vd,
@@ -779,7 +780,7 @@ class MXUMatMul(InstructionPattern):
     
     @classmethod
     def accepts(cls, tokens: list[str], resolve: Callable[[str], int] = lambda x: int(x, 0)) -> bool:
-        return len(tokens) == 3 and tokens[0] == cls.mnemonic and AccumulatorIndex.accepts(tokens[1]) and MatrixReg.accepts(tokens[2]) and WeightBufferIndex.accepts(tokens[3])
+        return len(tokens) == 3 and tokens[0] == cls.mnemonic and Accumulator.accepts(tokens[1]) and MatrixReg.accepts(tokens[2]) and WeightBuffer.accepts(tokens[3])
 
 
 

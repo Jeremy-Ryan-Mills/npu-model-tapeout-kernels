@@ -10,7 +10,7 @@ from .config import HardwareConfig
 
 
 class MatrixExecutionUnitSystolic(ExecutionUnit):
-    """Execution unit for matrix operations."""
+    """MXU0: Execution unit for matrix operations."""
 
     def __init__(
         self,
@@ -125,7 +125,7 @@ class MatrixExecutionUnitSystolic(ExecutionUnit):
 
 
 class MatrixExecutionUnitInner(ExecutionUnit):
-    """Execution unit for matrix operations."""
+    """MXU1: Execution unit for matrix operations."""
 
     def __init__(
         self,

@@ -5,22 +5,15 @@ You should not have to import anything from this module to write programs. If yo
 to write programs, see the utility functions in isa.py
 
 In this namespace:
-- Types that end in "T" are meant to be used for static type checking (i.e. User Input)
-- Types that do not end in "T" are meant to be used to dynamically check for correctness at runtime.
-    - Note that these types are declared using NewType, so they don't actually exist at runtime. 
-    - If you want to access at runtime, you can use Annotations.
-- is_X checks to see if an integer is within the right range to be cast to Type X. 
-    - These act as Type Guards, so running this function will implicitly cast the type of the input.
-- is_X_str (when present) checks if the string matches the right assembly format for the type.
-    - Note that this does NOT act as a Type Guard, since all of these types are integers.
-- as_X coerces a string or integer into Type X, performing the necessary runtime checks.
-
-Exported Static Types: `OpcodeT`, `Funct2T`, `Funct3T`, `Funct7T`, `ScalarRegT`, `ExponentRegT`, `MatrixRegT`
-
-Exported Dynamic Types: `Opcode`, `Funct2`, `Funct3`, `Funct7`, `ScalarReg`, `ExponentReg`, `MatrixReg`, `Imm12`, `SBImm12`, `Imm16`, `Imm20`
-
-Exported Union Types: `IRegT`, `IReg`, `VRRegT`, `VRReg`
-- These are used to allow multiple register types to be accepted by a single instruction type.
+- Types that end in "L" are meant to be used for static type checking (i.e. User Input)
+- Types that end in "T" are type types (i.e. a union of types). They're useful for allowing multiple
+  types to be passed into a function (the class itself, not objects instantiated from the class).
+- Types that do not end in "L" or "T" are meant to be used to dynamically check for correctness at runtime.
+  Each type implements:
+  - a constructor that converts a string or int into the type
+  - `is_signed()`: returns True if the literal falls into the signed range
+  - `is_unsigned()`: returns True if the literal falls into the unsigned range
+  - `accepts(val: str | int)`: returns True if the calling the constructor would succeed on the input.
 """
 from typing import TypeVar, Literal
 from enum import StrEnum
@@ -90,7 +83,7 @@ class BoundedInt(int):
         return super().__new__(cls, val)
 
 # Opcode Registers
-type OpcodeT = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127]
+type OpcodeL = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127]
 class Opcode(BoundedInt):
     """
     Represents a 7-bit opcode value.
@@ -102,7 +95,7 @@ class Opcode(BoundedInt):
     upper_bound = 128
 
 # Funct2 Registers
-type Funct2T = Literal[0,1,2,3]
+type Funct2L = Literal[0,1,2,3]
 class Funct2(BoundedInt):
     """
     Represents a 2-bit funct2 value.
@@ -114,7 +107,7 @@ class Funct2(BoundedInt):
     upper_bound = 4
 
 # Funct3 Registers
-type Funct3T = Literal[0,1,2,3,4,5,6,7]
+type Funct3L = Literal[0,1,2,3,4,5,6,7]
 class Funct3(BoundedInt):
     """
     Represents a 3-bit Funct3 value.
@@ -126,7 +119,7 @@ class Funct3(BoundedInt):
     upper_bound = 8
 
 # Funct7 Registers
-type Funct7T = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127]
+type Funct7L = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127]
 class Funct7(BoundedInt):
     """
     Represents a 7-bit Funct7 value.
@@ -139,7 +132,7 @@ class Funct7(BoundedInt):
 
 
 # Scalar Registers
-type ScalarRegT = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
+type ScalarRegL = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
 class ScalarReg(BoundedInt):
     """
     Represents a 5-bit reference to a Scalar Register.
@@ -163,7 +156,7 @@ class ScalarReg(BoundedInt):
         return cls.lower_bound <= val <= cls.upper_bound
 
 # Exponent Registers
-type ExponentRegT = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
+type ExponentRegL = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
 class ExponentReg(BoundedInt):
     """
     Represents a 5-bit reference to a Exponent Register.
@@ -187,7 +180,7 @@ class ExponentReg(BoundedInt):
         return cls.lower_bound <= val <= cls.upper_bound
 
 # Matrix Registers
-type MatrixRegT = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63]
+type MatrixRegL = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63]
 class MatrixReg(BoundedInt):
     """
     Represents a 6-bit reference to a Matrix Register.
@@ -210,8 +203,8 @@ class MatrixReg(BoundedInt):
         
         return cls.lower_bound <= val <= cls.upper_bound
 
-type AccumulatorIndexT = Literal[0,1]
-class AccumulatorIndex(BoundedInt):
+type AccumulatorL = Literal[0,1]
+class Accumulator(BoundedInt):
     """
     Represents a 1-bit reference to an accumulator buffer.
     
@@ -233,8 +226,8 @@ class AccumulatorIndex(BoundedInt):
         
         return cls.lower_bound <= val <= cls.upper_bound
     
-type WeightBufferIndexT = Literal[0,1]
-class WeightBufferIndex(BoundedInt):
+type WeightBufferL = Literal[0,1]
+class WeightBuffer(BoundedInt):
     """
     Represents a 1-bit reference to an accumulator buffer.
     
@@ -256,19 +249,8 @@ class WeightBufferIndex(BoundedInt):
         
         return cls.lower_bound <= val <= cls.upper_bound
 
-
-
-# I-Type instrs operate on both scalar and exponent registers.
-IRegT = TypeVar('IRegT', type[ExponentReg], type[ScalarReg])
-IReg = TypeVar('IReg', ExponentReg, ScalarReg)
-
-# VR-Type instrs operate on both scalar and exponent registers.
-VRRegT = TypeVar('VRRegT', type[ExponentReg], type[MatrixReg])
-VRReg = TypeVar('VRReg', ExponentReg, MatrixReg)
-
 # Register
 RegisterT = TypeVar('RegisterT', type[ScalarReg], type[ExponentReg], type[MatrixReg])
-Register = TypeVar('Register', ScalarReg, ExponentReg, MatrixReg)
 
 # Shamt
 class Shamt(BoundedInt):

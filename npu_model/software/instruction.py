@@ -1,9 +1,9 @@
 from ..isa import Instruction
-from ..isa_types import ScalarReg, ScalarRegT, ExponentReg, ExponentRegT, MatrixReg, MatrixRegT, AccumulatorIndex, AccumulatorIndexT, WeightBufferIndex, WeightBufferIndexT
+from ..isa_types import ScalarReg, ScalarRegL, ExponentReg, ExponentRegL, MatrixReg, MatrixRegL, Accumulator, AccumulatorL, WeightBuffer, WeightBufferL
 
 
 # Utility Functions to be used for writing programs:
-def x(val: ScalarRegT) -> ScalarReg:
+def x(val: ScalarRegL) -> ScalarReg:
     """
     Casts an integer as a Scalar Register
 
@@ -14,11 +14,11 @@ def x(val: ScalarRegT) -> ScalarReg:
         A reference to the corresponding scalar register
     
     Raises:
-        ValueError: if val is not 0-31.
+        ValueError: if val is not 0–31.
     """
     return ScalarReg(val)
 
-def e(val: ExponentRegT) -> ExponentReg:
+def e(val: ExponentRegL) -> ExponentReg:
     """
     Casts an integer as a Exponent Register
 
@@ -29,11 +29,11 @@ def e(val: ExponentRegT) -> ExponentReg:
         A reference to the corresponding exponent register
     
     Raises:
-        ValueError: if val is not 0-31.
+        ValueError: if val is not 0–31.
     """
     return ExponentReg(val)
 
-def m(val: MatrixRegT) -> MatrixReg:
+def m(val: MatrixRegL) -> MatrixReg:
     """
     Casts an integer as a Matrix Register
 
@@ -48,7 +48,7 @@ def m(val: MatrixRegT) -> MatrixReg:
     """
     return MatrixReg(val)
 
-def w(val: WeightBufferIndexT) -> WeightBufferIndex:
+def w(val: WeightBufferL) -> WeightBuffer:
     """
     Casts an integer as a Matrix Register
 
@@ -61,9 +61,9 @@ def w(val: WeightBufferIndexT) -> WeightBufferIndex:
     Raises:
         ValueError: if val is not 0–63.
     """
-    return WeightBufferIndex(val)
+    return WeightBuffer(val)
 
-def a(val: AccumulatorIndexT) -> AccumulatorIndex:
+def a(val: AccumulatorL) -> Accumulator:
     """
     Casts an integer as a Matrix Register
 
@@ -76,7 +76,7 @@ def a(val: AccumulatorIndexT) -> AccumulatorIndex:
     Raises:
         ValueError: if val is not 0–63.
     """
-    return AccumulatorIndex(val)
+    return Accumulator(val)
 
 class Uop():
     """

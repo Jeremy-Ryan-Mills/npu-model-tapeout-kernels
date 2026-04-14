@@ -40,8 +40,8 @@ from npu_model.isa_patterns import (
 from npu_model.isa_types import (
     ExponentReg,
     MatrixReg,
-    WeightBufferIndex,
-    AccumulatorIndex,
+    WeightBuffer,
+    Accumulator,
     Imm12,
     EXU
 )
@@ -86,7 +86,7 @@ def _tensor_register_bytes(state: ArchState) -> int:
     return state.cfg.mrf_depth * state.cfg.mrf_width // torch.uint8.itemsize
 
 
-def _vmatmul(state: ArchState, unit: str, vd: AccumulatorIndex, vs1: MatrixReg, vs2: WeightBufferIndex, accumulate: bool) -> None:
+def _vmatmul(state: ArchState, unit: str, vd: Accumulator, vs1: MatrixReg, vs2: WeightBuffer, accumulate: bool) -> None:
     activation_fp16 = state.read_mrf_fp8(vs1).to(torch.float16)
     weight_fp16 = state.read_wb_fp8(unit, vs2).to(torch.float16)
     result_fp16 = activation_fp16 @ weight_fp16
@@ -191,6 +191,7 @@ class SRLI(ScalarComputeShamt, IType, exu=EXU.SCALAR, opcode=0b0010011, funct3=0
 
 
 class SRAI(ScalarComputeShamt, IType, exu=EXU.SCALAR, opcode=0b0010011, funct3=0b101, funct7=0b0000000):
+    UPPER_IMM = 0b0100000
     def exec(self, state: ArchState) -> None:
         state.write_xrf(self.rd, state.xrf[self.rs1] >> (self.imm & 0x3F))
 
@@ -557,65 +558,65 @@ class EBREAK(Nullary, IType, exu=EXU.SCALAR, opcode=0b1110011, funct3=0b000, fun
     def ebreak(self, state: ArchState) -> None:
         pass
 
-class VMATPUSH_WEIGHT_MXU0(MXUWeightPush, VRType[WeightBufferIndex, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000000):
+class VMATPUSH_WEIGHT_MXU0(MXUWeightPush, VRType[WeightBuffer, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000000):
     def exec(self, state: ArchState) -> None:
         state.write_wb_u8("mxu0", self.vd, state.mrf[self.vs1].view(torch.uint8))
 
-class VMATPUSH_WEIGHT_MXU1(MXUWeightPush, VRType[WeightBufferIndex, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000001):
+class VMATPUSH_WEIGHT_MXU1(MXUWeightPush, VRType[WeightBuffer, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000001):
     def exec(self, state: ArchState) -> None:
         state.write_wb_u8("mxu1", self.vd, state.mrf[self.vs1].view(torch.uint8))
 
-class VMATPUSH_ACC_FP8_MXU0(MXUAccumulatorPush, VRType[AccumulatorIndex, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000010):
+class VMATPUSH_ACC_FP8_MXU0(MXUAccumulatorPush, VRType[Accumulator, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000010):
     def exec(self, state: ArchState) -> None:
         state.write_acc_bf16(
             "mxu0", self.vd, state.read_mrf_fp8(self.vs1).to(torch.bfloat16)
         )
 
-class VMATPUSH_ACC_FP8_MXU1(MXUAccumulatorPush, VRType[AccumulatorIndex, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000011):
+class VMATPUSH_ACC_FP8_MXU1(MXUAccumulatorPush, VRType[Accumulator, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000011):
     def exec(self, state: ArchState) -> None:
         state.write_acc_bf16(
             "mxu1", self.vd, state.read_mrf_fp8(self.vs1).to(torch.bfloat16)
         )
 
-class VMATPUSH_ACC_BF16_MXU0(MXUAccumulatorPush, VRType[AccumulatorIndex, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000100):
+class VMATPUSH_ACC_BF16_MXU0(MXUAccumulatorPush, VRType[Accumulator, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000100):
     def exec(self, state: ArchState) -> None:
         state.write_acc_bf16("mxu0", self.vd, state.read_mrf_bf16_tile(self.vs1))
 
-class VMATPUSH_ACC_BF16_MXU1(MXUAccumulatorPush, VRType[AccumulatorIndex, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000101):
+class VMATPUSH_ACC_BF16_MXU1(MXUAccumulatorPush, VRType[Accumulator, MatrixReg], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000101):
     def exec(self, state: ArchState) -> None:
         state.write_acc_bf16("mxu1", self.vd, state.read_mrf_bf16_tile(self.vs1))
 
-class VMATPOP_FP8_ACC_MXU0(MXUAccumulatorPopE1, VRType[MatrixReg, AccumulatorIndex], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000110):
+class VMATPOP_FP8_ACC_MXU0(MXUAccumulatorPopE1, VRType[MatrixReg, Accumulator], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000110):
     def exec(self, state: ArchState) -> None:
         quantized = torch.div(state.read_acc_bf16("mxu0", self.vs2), self.es1, rounding_mode="trunc").to(torch.float8_e4m3fn)
         state.write_mrf_u8(self.vd, quantized.view(torch.uint8))
 
-class VMATPOP_FP8_ACC_MXU1(MXUAccumulatorPopE1, VRType[MatrixReg, AccumulatorIndex], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000111):
+class VMATPOP_FP8_ACC_MXU1(MXUAccumulatorPopE1, VRType[MatrixReg, Accumulator], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0000111):
     def exec(self, state: ArchState) -> None:
         quantized = torch.div(state.read_acc_bf16("mxu1", self.vs2), self.es1, rounding_mode="trunc").to(torch.float8_e4m3fn)
         state.write_mrf_u8(self.vd, quantized.view(torch.uint8))
 
-class VMATPOP_BF16_ACC_MXU0(MXUAccumulatorPop, VRType[MatrixReg, AccumulatorIndex], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0001000):
+class VMATPOP_BF16_ACC_MXU0(MXUAccumulatorPop, VRType[MatrixReg, Accumulator], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0001000):
     def exec(self, state: ArchState) -> None:
         state.write_mrf_bf16_tile(self.vd, state.read_acc_bf16("mxu0", self.vs2))
 
-class VMATPOP_BF16_ACC_MXU1(MXUAccumulatorPop, VRType[MatrixReg, AccumulatorIndex], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0001001):
+class VMATPOP_BF16_ACC_MXU1(MXUAccumulatorPop, VRType[MatrixReg, Accumulator], exu=EXU.VECTOR, opcode=0b1110111, funct7=0b0001001):
     def exec(self, state: ArchState) -> None:
         state.write_mrf_bf16_tile(self.vd, state.read_acc_bf16("mxu1", self.vs2))
 
-class VMATMUL_MXU0(MXUMatMul, VRType[AccumulatorIndex, WeightBufferIndex], exu=EXU.MATRIX_SYSTOLIC, opcode=0b1110111, funct7=0b0001010):
+class VMATMUL_MXU0(MXUMatMul, VRType[Accumulator, WeightBuffer], exu=EXU.MATRIX_SYSTOLIC, opcode=0b1110111, funct7=0b0001010):
     def exec(self, state: ArchState) -> None:
         _vmatmul(state, "mxu0", self.vd, self.vs1, self.vs2, accumulate=False)
 
-class VMATMUL_MXU1(MXUMatMul, VRType[AccumulatorIndex, WeightBufferIndex], exu=EXU.MATRIX_INNER, opcode=0b1110111, funct7=0b0001011):
+class VMATMUL_MXU1(MXUMatMul, VRType[Accumulator, WeightBuffer], exu=EXU.MATRIX_INNER, opcode=0b1110111, funct7=0b0001011):
     def exec(self, state: ArchState) -> None:
         _vmatmul(state, "mxu1", self.vd, self.vs1, self.vs2, accumulate=False)
 
-class VMATMUL_ACC_MXU0(MXUMatMul, VRType[AccumulatorIndex, WeightBufferIndex], exu=EXU.MATRIX_SYSTOLIC, opcode=0b1110111, funct7=0b0001100):
+class VMATMUL_ACC_MXU0(MXUMatMul, VRType[Accumulator, WeightBuffer], exu=EXU.MATRIX_SYSTOLIC, opcode=0b1110111, funct7=0b0001100):
     def exec(self, state: ArchState) -> None:
         _vmatmul(state, "mxu0", self.vd, self.vs1, self.vs2, accumulate=True)
 
-class VMATMUL_ACC_MXU1(MXUMatMul, VRType[AccumulatorIndex, WeightBufferIndex], exu=EXU.MATRIX_INNER, opcode=0b1110111, funct7=0b0001101):
+class VMATMUL_ACC_MXU1(MXUMatMul, VRType[Accumulator, WeightBuffer], exu=EXU.MATRIX_INNER, opcode=0b1110111, funct7=0b0001101):
     def exec(self, state: ArchState) -> None:
         _vmatmul(state, "mxu1", self.vd, self.vs1, self.vs2, accumulate=True)
 

@@ -41,7 +41,7 @@ class Instruction(ABC):
     ) -> None:
         raise NotImplementedError()
 
-    def __init_subclass__(cls, exu: EXU | None = None, mnemonic: str | None = None, opcode: OpcodeT | None = None, instr: bool = True) -> None:
+    def __init_subclass__(cls, exu: EXU | None = None, mnemonic: str | None = None, opcode: OpcodeL | None = None, instr: bool = True) -> None:
         if exu:
             cls.exu = exu
         
@@ -80,7 +80,7 @@ class RType(Instruction, instr=False):
             | opcode_b
         )
 
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct3: Funct3T, funct7: Funct7T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, funct7: Funct7L, mnemonic: str | None = None) -> None:
         cls.funct3 = Funct3(funct3)
         cls.funct7 = Funct7(funct7)
         IsaSpec.R[cls.mnemonic] = cls
@@ -104,7 +104,7 @@ class IType[Reg: (ScalarReg, ExponentReg) = ScalarReg](Instruction, instr=False)
 
         return (imm_b << 20) | (rs1_b << 15) | (funct3_b << 12) | (rd_b << 7) | opcode_b
     
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct3: Funct3T, funct7: Funct7T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, funct7: Funct7L, mnemonic: str | None = None) -> None:
         cls.funct3 = Funct3(funct3)
         cls.funct7 = Funct7(funct7)
         IsaSpec.I[cls.mnemonic] = cls
@@ -135,7 +135,7 @@ class SType(Instruction, instr=False):
             | opcode_b
         )
     
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct3: Funct3T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, mnemonic: str | None = None) -> None:
         cls.funct3 = Funct3(funct3)
         IsaSpec.S[cls.mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
@@ -168,7 +168,7 @@ class SBType(Instruction, instr=False):
             | opcode_b
         )
     
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct3: Funct3T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct3 = Funct3(funct3)
         IsaSpec.SB[mnemonic] = cls
@@ -185,7 +185,7 @@ class UType(Instruction, instr=False):
 
         return (imm_b << 12) | (rd_b << 7) | opcode_b
 
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         IsaSpec.U[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
@@ -212,7 +212,7 @@ class UJType(Instruction, instr=False):
             | opcode_b
         )
     
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         IsaSpec.UJ[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
@@ -232,13 +232,13 @@ class VLSType(Instruction, instr=False):
 
         return (imm_b << 20) | (rs1_b << 15) | (funct2_b << 13) | (vd_b << 7) | opcode_b
     
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct2: Funct2T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct2: Funct2L, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct2 = Funct2(funct2)
         IsaSpec.VLS[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
 
-class VRType[VD: (MatrixReg,AccumulatorIndex,WeightBufferIndex) = MatrixReg, VS2: (MatrixReg,AccumulatorIndex,WeightBufferIndex) = MatrixReg](Instruction, instr=False):
+class VRType[VD: (MatrixReg,Accumulator,WeightBuffer) = MatrixReg, VS2: (MatrixReg,Accumulator,WeightBuffer) = MatrixReg](Instruction, instr=False):
     funct7: Funct7    = NotImplemented
     vs1: MatrixReg
     es1: ExponentReg
@@ -260,7 +260,7 @@ class VRType[VD: (MatrixReg,AccumulatorIndex,WeightBufferIndex) = MatrixReg, VS2
             (funct7_b << 25) | (vs2_b << 19) | (vs1_b << 13) << (vd_b << 7) | opcode_b
         )
         
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct7: Funct7T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct7: Funct7L, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct7 = Funct7(funct7)
         IsaSpec.VR[mnemonic] = cls
@@ -279,7 +279,7 @@ class VIType(Instruction, instr=False):
 
         return (imm_b << 16) | (funct3_b << 13) | (vd_b << 7) | opcode_b
 
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct3: Funct3T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct3 = Funct3(funct3)
         IsaSpec.VI[mnemonic] = cls
@@ -300,7 +300,7 @@ class CSRType(Instruction, instr=False):
 
         return (imm_b << 20) | (rs1_b << 15) | (funct3_b << 12) | (rd_b << 7) | opcode_b
 
-    def __init_subclass__(cls, exu: EXU, opcode: OpcodeT, funct3: Funct3T, mnemonic: str | None = None) -> None:
+    def __init_subclass__(cls, exu: EXU, opcode: OpcodeL, funct3: Funct3L, mnemonic: str | None = None) -> None:
         mnemonic = mnemonic if mnemonic != None else cls.__name__.lower().replace("_",".")
         cls.funct3 = Funct3(funct3)
         IsaSpec.CSR[cls.mnemonic] = cls
