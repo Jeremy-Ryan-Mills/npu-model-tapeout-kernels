@@ -12,15 +12,16 @@ Options:
 """
 
 import argparse
+from typing import Any
 
 import npu_model
 from npu_model.logging import LoggerConfig
 from npu_model.simulation import Simulation
+from npu_model.util.converter import input_to_program
 
 from npu_model.configs.programs import *  # noqa: F401, F403
 from npu_model.configs.hardware import *  # noqa: F401, F403
 from npu_model.configs.isa_definition import *  # noqa: F401, F403
-
 
 def main():
     """Main entry point."""
@@ -66,15 +67,22 @@ Examples:
     except NameError:
         print(f"Hardware config '{args.hardware_config}' not found.")
         print("available options are:")
-        print(f"  {', '.join(npu_model.configs.hardware.__all__)}")
+        print(f"  {', '.join(npu_model.configs.hardware.__all__)}") # type: ignore
         return
     try:
         program = eval(args.program)()
     except NameError:
-        print(f"Program '{args.program}' not found.")
-        print("available options are:")
-        print(f"  {', '.join(npu_model.configs.programs.__all__)}")
-        return
+        try:
+            # If that doesn't work, try opening it as a file and parsing it
+            with open(args.program) as f:
+                program: Any = input_to_program(f)
+
+        except NameError:
+            print(f"Program '{args.program}' not found.")
+            print("available options are a .S file or:")
+            print(f"  {', '.join(npu_model.configs.programs.__all__)}")  # type: ignore
+            return
+        
     sim = Simulation(
         hardware_config=hardware_config,
         logger_config=LoggerConfig(filename=args.output),
