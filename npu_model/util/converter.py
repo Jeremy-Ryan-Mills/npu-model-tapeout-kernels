@@ -102,9 +102,8 @@ def input_to_program(source: TextIO):
             pc += len(e)
         else:
             try:
-                # TODO: This doesn't handle labels. I think we should have `from_asm`
-                # accept the resolve function and use it for label-friendly imms.
-                # i don't wanna deal with this rn, they should all subclass both
+                # mnemonic should be lowercase
+                tokens[0] = tokens[0].lower()
                 instr = cast(InstructionPattern, IsaSpec.operations[mnemonic])
 
                 if len(err := instr.lint(tokens, labels=list(labels.keys()))) != 0:

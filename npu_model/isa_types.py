@@ -18,7 +18,7 @@ In this namespace:
 
 from enum import StrEnum
 from typing import Literal, TypeVar
-
+import re
 
 class AsmError(ValueError):
     def __init__(self, message: str, *, token_index: int = 0):
@@ -159,8 +159,6 @@ class Funct3(BoundedInt):
 
 # Funct7 Registers
 type Funct7L = Literal[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127]
-
-
 class Funct7(BoundedInt):
     """
     Represents a 7-bit Funct7 value.
@@ -179,6 +177,7 @@ class RegBase(BoundedInt):
     @classmethod
     def lint(cls, val: str | int, role: str = "", tok_idx: int = 0) -> list[AsmError]:
         if isinstance(val, str):
+            val = val.lower()
             if not val.startswith(cls.fmt):
                 return [
                     AsmError(
@@ -186,7 +185,7 @@ class RegBase(BoundedInt):
                         token_index=tok_idx,
                     )
                 ]
-            val = val[1:]
+            val = val[len(cls.fmt):]
 
         try:
             val = int(val)
@@ -203,17 +202,19 @@ class RegBase(BoundedInt):
 
         return [
             AsmError(
-                f"{cls.reg_name.capitalize()} '{val}' out of range ({cls.fmt}{cls.lower_bound}–{cls.upper_bound - 1})"
+                f"{cls.reg_name.capitalize()} '{val}' out of range ({cls.fmt}{cls.lower_bound}–{cls.upper_bound - 1})",
+                token_index=tok_idx,
             )
         ]
 
     def __new__(cls, val: str | int):
         if isinstance(val, str):
+            val = val.lower()
             if not val.startswith(cls.fmt):
                 raise ValueError(
                     f"Attempted to intialize a malformed {cls.reg_name} (missing '{cls.fmt}'): {val}"
                 )
-            val = int(val[1:])
+            val = int(val[len(cls.fmt):])
 
         return super().__new__(cls, val)
 
@@ -234,6 +235,36 @@ class ScalarReg(RegBase):
     upper_bound = 32
     fmt = "x"
     reg_name = "scalar register"
+
+    @classmethod
+    def lint(cls, val: str | int, role: str = "", tok_idx: int = 0) -> list[AsmError]:
+        if isinstance(val, str):
+            if re.match(r"\b(zero|ra|sp|gp|tp|t[0-6]|s0|fp|s[1-9]|s1[0-1]|a[0-7])\b", val) != None:
+                return []
+        return super().lint(val, role=role, tok_idx=tok_idx)
+
+    def __new__(cls, val: str | int):
+        # We want scalar registers to support using ABI names in asm
+        if isinstance(val, str):
+            val = val.lower()
+
+        match val:
+            case "zero": return super().__new__(cls, 0)
+            case "ra": return super().__new__(cls, 1)
+            case "sp": return super().__new__(cls, 2)
+            case "gp": return super().__new__(cls, 3)
+            case "tp": return super().__new__(cls, 4)
+            case "t0" | "t1" | "t2": return super().__new__(cls, 5 + int(val[1:]))
+            case "s0" | "fp": return super().__new__(cls, 8)
+            case "s1": return super().__new__(cls, 9)
+            case "a0" | "a1" | "a2" | "a3" | "a4" | "a5" | "a6" | "a7":
+                return super().__new__(cls, 10 + int(val[1:]))
+            case "s2" | "s3" | "s4" | "s5" | "s6" | "s7" | "s8" | "s9" | "s10" | "s11":
+                return super().__new__(cls, 16 + int(val[1:]))
+            case "t3" | "t4" | "t5" | "t6":
+                return super().__new__(cls, 25 + int(val[1:]))                
+            case other: return super().__new__(cls, other)
+        
 
 
 # Exponent Registers
@@ -287,7 +318,7 @@ class Accumulator(RegBase):
 
     lower_bound = 0
     upper_bound = 2
-    fmt = "a"
+    fmt = "acc"
     reg_name = "accumulator"
 
 

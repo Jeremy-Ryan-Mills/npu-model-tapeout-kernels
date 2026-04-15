@@ -1,4 +1,4 @@
-from ...software import a, m, x, w, Program
+from ...software import acc, m, x, w, Program
 import torch
 from npu_model.isa import Instruction
 from npu_model.workload.gemma_blocks import gemma_mlp_gate_up_forward
@@ -78,13 +78,13 @@ class GemmaMlpProgram(Program):
         # --- PHASE 3: Matrix Multiplications ---
         # Gate projection: activation @ gate_weight -> Acc/MRF
         # Note: Using MatrixArgs for matmul
-        VMATMUL_MXU0(vd=a(0), vs1=m(2), vs2=w(0)),
+        VMATMUL_MXU0(vd=acc(0), vs1=m(2), vs2=w(0)),
         DELAY(imm=33),
-        VMATPOP_BF16_ACC_MXU0(vd=m(4), vs2=a(0)),  # gate -> mrf4+5
+        VMATPOP_BF16_ACC_MXU0(vd=m(4), vs2=acc(0)),  # gate -> mrf4+5
         # Up projection: activation @ up_weight -> Acc/MRF
-        VMATMUL_MXU0(vd=a(0), vs1=m(2), vs2=w(1)),
+        VMATMUL_MXU0(vd=acc(0), vs1=m(2), vs2=w(1)),
         DELAY(imm=33),
-        VMATPOP_BF16_ACC_MXU0(vd=m(6), vs2=a(0)),  # up -> mrf6+7
+        VMATPOP_BF16_ACC_MXU0(vd=m(6), vs2=acc(0)),  # up -> mrf6+7
         # --- PHASE 4: Element-wise Multiplication (GeGLU Simplified) ---
         VMUL_BF16(vd=m(8), vs1=m(4), vs2=m(6)),
         VMUL_BF16(vd=m(9), vs1=m(5), vs2=m(7)),

@@ -1,6 +1,6 @@
 import torch
 from npu_model.isa import Instruction
-from ...software import a, m, x, w, Program
+from ...software import acc, m, x, w, Program
 
 from npu_model.configs.isa_definition import *
 
@@ -60,10 +60,10 @@ class MatmulProgram(Program):
         VMATPUSH_WEIGHT_MXU0(vd=w(0), vs1=m(1)),
         # VPU local transfer (1KB) is ~16 cycles at 64B/cycle
         DELAY(16),
-        VMATMUL_MXU0(vd=a(0), vs1=m(0), vs2=w(0)),
+        VMATMUL_MXU0(vd=acc(0), vs1=m(0), vs2=w(0)),
         # MXU matmul latency is 32 cycles by default; add small slack.
         DELAY(imm=32),
-        VMATPOP_BF16_ACC_MXU0(vd=m(2), vs2=a(0)),
+        VMATPOP_BF16_ACC_MXU0(vd=m(2), vs2=acc(0)),
         # store to vmem
         VSTORE(vd=m(2), rs1=x(3), imm=0),
         VSTORE(vd=m(3), rs1=x(3), imm=32),

@@ -63,7 +63,7 @@ def w(val: WeightBufferL) -> WeightBuffer:
     """
     return WeightBuffer(val)
 
-def a(val: AccumulatorL) -> Accumulator:
+def acc(val: AccumulatorL) -> Accumulator:
     """
     Casts an integer as a Matrix Register
 

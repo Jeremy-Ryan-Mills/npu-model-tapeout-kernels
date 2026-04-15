@@ -30,13 +30,16 @@ from lsprotocol import types
 from pygls.lsp.server import LanguageServer
 
 # ---------------------------------------------------------------------------
-# Pseudo param list
+# Global variables
 # ---------------------------------------------------------------------------
 
 _PSEUDO_PARAMS: dict[str, list[str]] = {
     "nop": [],
     "li": ["x<rd>", "imm32"],
 }
+
+# Keep track of labels we ran into last time we linted.
+_SEEN_LABELS: list[str] = []
 
 # ---------------------------------------------------------------------------
 # Server instance

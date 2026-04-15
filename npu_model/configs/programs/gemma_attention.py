@@ -1,6 +1,6 @@
 import math
 import torch
-from ...software import a, m, x, w, Program
+from ...software import acc, m, x, w, Program
 from npu_model.isa import Instruction
 
 from npu_model.configs.isa_definition import *
@@ -90,9 +90,9 @@ class GemmaAttentionProgram(Program):
         # Push K to WB slot 0, compute scores = Q @ K, pop bf16
         VMATPUSH_WEIGHT_MXU0(vd=w(0), vs1=m(1)),
         DELAY(imm=17),
-        VMATMUL_MXU0(vd=a(0), vs1=m(0), vs2=w(0)),
+        VMATMUL_MXU0(vd=acc(0), vs1=m(0), vs2=w(0)),
         DELAY(imm=33),
-        VMATPOP_BF16_ACC_MXU0(vd=m(3), vs2=a(0)),  # scores bf16 tile
+        VMATPOP_BF16_ACC_MXU0(vd=m(3), vs2=acc(0)),  # scores bf16 tile
 
         # scores_scaled = scores * scale
         VMUL_BF16(vd=m(4), vs1=m(3), vs2=m(2)),

@@ -1,9 +1,9 @@
-from .instruction import a, e, m, x, w, Uop
+from .instruction import acc, e, m, x, w, Uop
 from .program import Program
 
 
 __all__ = [
-    "a",
+    "acc",
     "e",
     "m",
     "x",

@@ -1,7 +1,7 @@
 from npu_model.isa import Instruction
 import torch
 from ...software import (
-    a, e, m, x, w,
+    acc, e, m, x, w,
     Program,
 )
 
@@ -45,12 +45,12 @@ class DMAStallProgram(Program):
         DMA_LOAD_CH0(rd=x(3), rs1=x(0), rs2=x(1)),
         DMA_LOAD_CH1(rd=x(4), rs1=x(1), rs2=x(1)),
         # --- 5. Do matmul ---
-        VMATMUL_MXU0(vd=a(0), vs1=m(1), vs2=w(0)),
+        VMATMUL_MXU0(vd=acc(0), vs1=m(1), vs2=w(0)),
         DELAY(imm=32), # TODO - verify delays
         # VMATMUL.MXU0(vd=0, vs1=0, vs2=0),
         # VMATMUL.MXU0(vd=0, vs1=0, vs2=0),
         # VMATMUL.MXU0(vd=0, vs1=0, vs2=0),
-        VMATPOP_FP8_ACC_MXU0(vd=m(0), es1=e(0), vs2=a(0)),
+        VMATPOP_FP8_ACC_MXU0(vd=m(0), es1=e(0), vs2=acc(0)),
         # DELAY(imm=32),
         # Wait to finish unnecessary loads
         DMA_WAIT_CH0(),

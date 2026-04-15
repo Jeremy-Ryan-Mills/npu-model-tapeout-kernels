@@ -140,7 +140,7 @@ _PSEUDOS: dict[str, Callable[[list[str], list[str]], list[AsmError]]] = {
 }
 
 # ---------------------------------------------------------------------------
-# AsmError → Diagnostic conversion
+# AsmError -> Diagnostic conversion
 # ---------------------------------------------------------------------------
 
 

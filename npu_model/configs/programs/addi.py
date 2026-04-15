@@ -1,7 +1,7 @@
 import torch
 from npu_model.isa import *
 from ...software import (
-    a, m, x, w,
+    acc, m, x, w,
     Program,
 )
 
@@ -19,7 +19,7 @@ class AddiProgram(Program):
         ADDI(rd=x(1), rs1=x(1), imm=1),
         BLT(rs1=x(1), rs2=x(2), imm=-1),
         DELAY(imm=3),
-        VMATMUL_MXU1(vd=a(1), vs1=m(1), vs2=w(1)),
+        VMATMUL_MXU1(vd=acc(1), vs1=m(1), vs2=w(1)),
         ADDI(rd=x(4), rs1=x(4), imm=1),
         ADDI(rd=x(5), rs1=x(5), imm=1),
         DELAY(imm=0)
