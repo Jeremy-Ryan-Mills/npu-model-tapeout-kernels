@@ -107,8 +107,10 @@ def input_to_program(source: TextIO):
                 # i don't wanna deal with this rn, they should all subclass both
                 instr = cast(InstructionPattern, IsaSpec.operations[mnemonic])
 
-                if instr.accepts(tokens):
-                    instructions.append(cast(Instruction, instr.from_asm(tokens, resolve)))
+                if len(err := instr.lint(tokens, labels=list(labels.keys()))) != 0:
+                    raise ExceptionGroup(f"Error assembling isntr: {", ".join(tokens)}", err)
+                
+                instructions.append(cast(Instruction, instr.from_asm(tokens, resolve)))
             except KeyError:
                 raise ValueError(f"Invalid mnemonic provided: {line}")
     

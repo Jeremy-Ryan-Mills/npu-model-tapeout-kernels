@@ -23,5 +23,6 @@ packages = ["."]
 
 [dependency-groups]
 dev = [
+    "pygls>=2.1.1",
     "ty>=0.0.29",
 ]

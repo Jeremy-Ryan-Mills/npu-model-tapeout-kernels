@@ -25,12 +25,9 @@ How to add your own SmolVLA kernel:
     4. Run: uv run python scripts/test_programs.py --verbose
 """
 
-from typing import Any, List, Tuple
-
 import torch
-
 from ...software import m, x, Program
-
+from ...isa import Instruction
 from npu_model.configs.isa_definition import *
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -118,7 +115,7 @@ TILE_BYTES = 1024  # 32 * 16 * 2 (bf16)
 class SmolVLASiluProgram(Program):
     """SiLU(x) = x * sigmoid(x) = x / (1 + exp(-x))."""
 
-    instructions: List[Instruction[Any]] = [
+    instructions: list[Instruction] = [
         # ── Scalar register setup ──
         ADDI(rd=x(1), rs1=x(0), imm=VMEM_INPUT_BASE),
         ADDI(rd=x(2), rs1=x(0), imm=VMEM_OUTPUT_BASE),
@@ -147,7 +144,7 @@ class SmolVLASiluProgram(Program):
         DMA_WAIT_CH0(),
     ]
 
-    memory_regions: List[Tuple[int, torch.Tensor]] = [
+    memory_regions: list[tuple[int, torch.Tensor]] = [
         (DRAM_INPUT_BASE, INPUT),
     ]
 
