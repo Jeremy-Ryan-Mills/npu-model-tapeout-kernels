@@ -7,7 +7,8 @@ Everything lives in this one file:
     - The MLIR op definition (as a string, compilable with iree.compiler)
     - The PyTorch reference implementation
     - The NPU ISA program
-    - The golden result (computed from PyTorch, cross-checked with MLIR if IREE available)
+    - The golden result (computed from PyTorch, optionally cross-checked with
+      MLIR when NPU_MODEL_ENABLE_IREE_CROSSCHECK=1)
 
 Model context:
     SiLU appears 32 times in SmolVLA (once per Gemma MLP layer).
@@ -24,6 +25,8 @@ How to add your own SmolVLA kernel:
     3. Replace SILU_MLIR, silu_reference, and the ISA instructions.
     4. Run: uv run python scripts/test_programs.py --verbose
 """
+
+import os
 
 from typing import Any, List, Tuple
 
@@ -72,31 +75,44 @@ def silu_reference(x: torch.Tensor) -> torch.Tensor:
 # 3. Golden data — deterministic input + expected output.
 # ═══════════════════════════════════════════════════════════════════════════
 
+
+def _iree_crosscheck_enabled() -> bool:
+    value = os.environ.get("NPU_MODEL_ENABLE_IREE_CROSSCHECK", "")
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _maybe_crosscheck_with_iree(expected: torch.Tensor) -> torch.Tensor:
+    """Optionally validate the MLIR with IREE without impacting normal startup."""
+    if not _iree_crosscheck_enabled():
+        return expected
+
+    try:
+        import numpy as np
+        import iree.compiler as compiler
+        import iree.runtime as runtime
+    except ImportError:
+        return expected
+
+    vmfb = compiler.compile_str(
+        SILU_MLIR,
+        target_backends=["llvm-cpu"],
+        extra_args=["--iree-llvmcpu-target-cpu=generic"],
+    )
+    config = runtime.Config("local-task")
+    ctx = runtime.SystemContext(config=config)
+    ctx.add_vm_module(runtime.VmModule.copy_buffer(ctx.instance, vmfb))
+    iree_out = ctx.modules.module["silu"](INPUT.float().numpy())
+    iree_expected = torch.from_numpy(np.array(iree_out)).to(torch.bfloat16)
+    diff = (expected.float() - iree_expected.float()).abs().max().item()
+    assert diff < 1e-3, f"MLIR vs PyTorch mismatch: {diff}"
+    return iree_expected
+
 torch.manual_seed(42)
 INPUT = torch.randn(32, 16, dtype=torch.bfloat16)
 
 # Primary golden: PyTorch reference
 EXPECTED = silu_reference(INPUT)
-
-# Optional cross-check: compile + run the MLIR via IREE (if available).
-# This verifies that the MLIR definition matches the PyTorch reference.
-try:
-    import numpy as np
-    import iree.compiler as compiler
-    import iree.runtime as runtime
-
-    _vmfb = compiler.compile_str(SILU_MLIR, target_backends=["llvm-cpu"])
-    _config = runtime.Config("local-task")
-    _ctx = runtime.SystemContext(config=_config)
-    _ctx.add_vm_module(runtime.VmModule.copy_buffer(_ctx.instance, _vmfb))
-    _iree_out = _ctx.modules.module["silu"](INPUT.float().numpy())
-    _iree_expected = torch.from_numpy(np.array(_iree_out)).to(torch.bfloat16)
-    _diff = (EXPECTED.float() - _iree_expected.float()).abs().max().item()
-    assert _diff < 1e-3, f"MLIR vs PyTorch mismatch: {_diff}"
-    # Use IREE output as golden (it's the compiler's ground truth)
-    EXPECTED = _iree_expected
-except ImportError:
-    pass  # IREE not available — use PyTorch reference (fine for CI)
+EXPECTED = _maybe_crosscheck_with_iree(EXPECTED)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -131,21 +147,22 @@ class SmolVLASiluProgram(Program):
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
         # ── Load input to MRF + constants ──
         Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),   # v0 = x
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         Instruction(mnemonic="vli.all", args=VectorArgs(vd=1, imm=-1)),          # v1 = -1.0
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vli.all", args=VectorArgs(vd=2, imm=1)),           # v2 = +1.0
-        # Wait for vload (16 cycles) to populate v0
-        Instruction("delay", args=ScalarArgs(imm=16)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # ── SiLU: x / (1 + exp(-x)) ──
         Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=3, vs1=0, vs2=1)),  # v3 = -x
-        Instruction("delay", args=ScalarArgs(imm=2)), # wait for vmul (2 cycles)
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vexp.bf16", args=VectorArgs(vd=4, vs1=3)),          # v4 = exp(-x)
-        Instruction("delay", args=ScalarArgs(imm=8)), # wait for vexp (8 cycles)
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vadd.bf16", args=VectorArgs(vd=5, vs1=4, vs2=2)),  # v5 = 1+exp(-x)
-        Instruction("delay", args=ScalarArgs(imm=2)), # wait for vadd (2 cycles)
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vrecip.bf16", args=VectorArgs(vd=6, vs1=5)),        # v6 = sigmoid(x)
-        Instruction("delay", args=ScalarArgs(imm=8)), # wait for vrecip (8 cycles)
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=7, vs1=0, vs2=6)),  # v7 = silu(x)
-        Instruction("delay", args=ScalarArgs(imm=2)), # wait for vmul (2 cycles)
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # ── Store: MRF → VMEM → DRAM ──
         Instruction(mnemonic="vstore", args=VectorArgs(vd=7, rs1=2, imm12=0)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=20)),

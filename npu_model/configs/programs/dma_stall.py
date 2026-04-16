@@ -35,6 +35,7 @@ class DMAStallProgram(Program):
         # Move VMEM data to actual computational registers
         # vload VMEM(x1=0) -> MRF 2
         Instruction(mnemonic="vload", args=VectorArgs(vd=1, rs1=0, imm12=0)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         # vload VMEM(x2=1024) -> Temporary MRF 1
         Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=2, imm12=0)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=100)),
@@ -49,6 +50,7 @@ class DMAStallProgram(Program):
         Instruction(
             mnemonic="dma.load.ch<N>", args=DmaArgs(rd=4, rs1=1, rs2=1, channel=1)
         ),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         # --- 5. Do matmul ---
         Instruction(mnemonic="vmatmul.mxu0", args=MatrixArgs(vd=0, vs1=1, vs2=0)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=32)),  # TODO - verify delays
