@@ -253,10 +253,14 @@ class ArchState:
     def write_dram(self, offset: int, data: torch.Tensor) -> None:
         data = data.flatten()
         address = (self.base << 32) | offset
+        end = address + data.numel()
         assert (
-            address < offset + data.numel() <= self.cfg.dram_size
-        ), f"Memory write out of bounds: {address} + {data.numel()} > {self.cfg.dram_size}"
-        self.dram[address : address + data.numel()] = data
+            0 <= address <= end <= self.cfg.dram_size
+        ), (
+            f"Memory write out of bounds: "
+            f"[{address}, {end}) exceeds DRAM size {self.cfg.dram_size}"
+        )
+        self.dram[address:end] = data
 
     def read_dram(self, offset: int, length: int) -> torch.Tensor:
         address = (self.base << 32) | offset

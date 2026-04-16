@@ -1,8 +1,10 @@
 import torch
+
 from npu_model.hardware.arch_state import ArchState
 from npu_model.hardware.config import ArchStateConfig
 
-if __name__ == "__main__":
+
+def build_state() -> ArchState:
     cfg = ArchStateConfig(
         mrf_depth=32,
         mrf_width=32,
@@ -15,8 +17,28 @@ if __name__ == "__main__":
         dram_size=1048576,
         vmem_size=256 * 1024,
     )
+    return ArchState(cfg)
 
-    state = ArchState(cfg)
+
+def test_zero_byte_dram_write_at_end_of_memory() -> None:
+    state = build_state()
+
+    state.write_dram(state.cfg.dram_size, torch.zeros(0, dtype=torch.uint8))
+    assert state.read_dram(state.cfg.dram_size, 0).numel() == 0
+
+
+def test_non_empty_dram_write_past_end_fails() -> None:
+    state = build_state()
+
+    try:
+        state.write_dram(state.cfg.dram_size, torch.tensor([1], dtype=torch.uint8))
+    except AssertionError:
+        return
+    raise AssertionError("Expected out-of-bounds DRAM write to fail")
+
+
+if __name__ == "__main__":
+    state = build_state()
 
     state.write_mrf_f32(0, torch.ones(32, 8))
     print(state.read_mrf_f32(0))
@@ -26,3 +48,7 @@ if __name__ == "__main__":
 
     state.write_mrf_bf16_tile(2, torch.ones(32, 32, dtype=torch.bfloat16))
     print(state.read_mrf_bf16_tile(2))
+
+    test_zero_byte_dram_write_at_end_of_memory()
+    test_non_empty_dram_write_past_end_fails()
+    print("ArchState regression tests passed.")
