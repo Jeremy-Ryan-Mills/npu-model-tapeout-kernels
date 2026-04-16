@@ -258,7 +258,11 @@ try:
     _scale_in = np.array(SCALE_VALUE, dtype=np.float32).reshape(())
     _mask_in = np.ones((1, 32, 64), dtype=bool)
 
-    _vmfb = compiler.compile_str(FUSED_ATTENTION_MLIR, target_backends=["llvm-cpu"])
+    _vmfb = compiler.compile_str(
+        FUSED_ATTENTION_MLIR,
+        target_backends=["llvm-cpu"],
+        extra_args=["--iree-llvmcpu-target-cpu=generic"],
+    )
     _cfg = runtime.Config("local-task")
     _ctx = runtime.SystemContext(config=_cfg)
     _ctx.add_vm_module(runtime.VmModule.copy_buffer(_ctx.instance, _vmfb))

@@ -78,7 +78,9 @@ try:
     import iree.runtime as runtime
 
     _vmfb = compiler.compile_str(
-        ELEMENTWISE_ADD_MLIR, target_backends=["llvm-cpu"]
+        ELEMENTWISE_ADD_MLIR,
+        target_backends=["llvm-cpu"],
+        extra_args=["--iree-llvmcpu-target-cpu=generic"],
     )
     _config = runtime.Config("local-task")
     _ctx = runtime.SystemContext(config=_config)

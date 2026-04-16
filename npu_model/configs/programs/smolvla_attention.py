@@ -91,7 +91,11 @@ try:
     import iree.compiler as compiler
     import iree.runtime as runtime
 
-    _vmfb = compiler.compile_str(ATTENTION_MLIR, target_backends=["llvm-cpu"])
+    _vmfb = compiler.compile_str(
+        ATTENTION_MLIR,
+        target_backends=["llvm-cpu"],
+        extra_args=["--iree-llvmcpu-target-cpu=generic"],
+    )
     _cfg = runtime.Config("local-task")
     _ctx = runtime.SystemContext(config=_cfg)
     _ctx.add_vm_module(runtime.VmModule.copy_buffer(_ctx.instance, _vmfb))
