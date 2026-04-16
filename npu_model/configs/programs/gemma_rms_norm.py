@@ -45,39 +45,53 @@ class GemmaRmsNormProgram(Program):
         Instruction(mnemonic="addi", args=ScalarArgs(rd=6, rs1=6, imm=-2048)),
         # byte length for bf16 tile
         Instruction(mnemonic="addi", args=ScalarArgs(rd=7, rs1=0, imm=1024)),
-
         # DRAM -> VMEM
         Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, channel=0)),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-        Instruction(mnemonic="dma.load.ch<N>", args=DmaArgs(rd=1, rs1=4, rs2=7, channel=0)),
-        Instruction(mnemonic="dma.load.ch<N>", args=DmaArgs(rd=2, rs1=5, rs2=7, channel=1)),
+        Instruction(
+            mnemonic="dma.load.ch<N>", args=DmaArgs(rd=1, rs1=4, rs2=7, channel=0)
+        ),
+        Instruction(
+            mnemonic="dma.load.ch<N>", args=DmaArgs(rd=2, rs1=5, rs2=7, channel=1)
+        ),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=1)),
-
         # VMEM -> MRF
         Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),  # x
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         Instruction(mnemonic="vload", args=VectorArgs(vd=1, rs1=2, imm12=0)),  # eps
-
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         # x_sq = x * x
         Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=2, vs1=0, vs2=0)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # sum_sq over columns, broadcast back across each row
         Instruction(mnemonic="vredsum.row.bf16", args=VectorArgs(vd=3, vs1=2)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # mean_sq = sum_sq * (1/ROW_SIZE)
         Instruction(mnemonic="vli.all", args=VectorArgs(vd=4, imm=ROW_SIZE)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vrecip.bf16", args=VectorArgs(vd=5, vs1=4)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=6, vs1=3, vs2=5)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # var_eps = var + eps
         Instruction(mnemonic="vadd.bf16", args=VectorArgs(vd=7, vs1=6, vs2=1)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # rsqrt = 1/sqrt(var_eps)
         Instruction(mnemonic="vsqrt.bf16", args=VectorArgs(vd=8, vs1=7)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         Instruction(mnemonic="vrecip.bf16", args=VectorArgs(vd=9, vs1=8)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
         # output = x * rsqrt
         Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=10, vs1=0, vs2=9)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=2)),
 
         # MRF -> VMEM -> DRAM
         Instruction(mnemonic="vstore", args=VectorArgs(vd=10, rs1=3, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=20)),
-        Instruction(mnemonic="dma.store.ch<N>", args=DmaArgs(rd=6, rs1=3, rs2=7, channel=0)),
+        Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
+        Instruction(
+            mnemonic="dma.store.ch<N>", args=DmaArgs(rd=6, rs1=3, rs2=7, channel=0)
+        ),
         Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
     ]
 
