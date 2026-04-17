@@ -977,7 +977,7 @@ def vmatpop_fp8_acc_mxu0(state: ArchState, args: MatrixArgs) -> None:
 )
 def vmatpop_fp8_acc_mxu1(state: ArchState, args: MatrixArgs) -> None:
     quantized = state.read_acc_bf16("mxu1", args.vs1).to(torch.float8_e4m3fn)
-    state.write_mrf_fp8(args.vd, quantized.view(torch.uint8))
+    state.write_mrf_fp8(args.vd, quantized)
 
 
 @instr(
