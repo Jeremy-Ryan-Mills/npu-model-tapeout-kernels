@@ -623,7 +623,7 @@ class SmolVLAFusedAttentionProgram(Program):
         Instruction(mnemonic="delay", args=ScalarArgs(imm=4)),
         Instruction(mnemonic="vadd.bf16", args=VectorArgs(vd=10, vs1=48, vs2=50)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=4)),
-        # m_prev = m_new (pair copy: two vmov ops for both halves)
+        # m_prev = m_new (vmov is per-register; two moves to copy the pair)
         Instruction(mnemonic="vmov", args=VectorArgs(vd=8, vs1=38)),
         Instruction(mnemonic="delay", args=ScalarArgs(imm=16)),
         Instruction(mnemonic="vmov", args=VectorArgs(vd=9, vs1=39)),
