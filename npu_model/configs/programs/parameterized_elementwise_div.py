@@ -109,16 +109,12 @@ def make_elementwise_div_instructions(
             insns.append(Instruction("vload", VectorArgs(vd=3, rs1=2, imm12=32)))
             insns.append(Instruction("delay", ScalarArgs(imm=16)))
 
-            # (v4, v5) = 1/B
+            # (v4, v5) = 1/B  — pair-op writes both
             insns.append(Instruction("vrecip.bf16", VectorArgs(vd=4, vs1=2)))
             insns.append(Instruction("delay", ScalarArgs(imm=16)))
-            insns.append(Instruction("vrecip.bf16", VectorArgs(vd=5, vs1=3)))
-            insns.append(Instruction("delay", ScalarArgs(imm=16)))
 
-            # (v6, v7) = A * (1/B) = A/B
+            # (v6, v7) = A * (1/B) = A/B  — pair-op writes both
             insns.append(Instruction("vmul.bf16", VectorArgs(vd=6, vs1=0, vs2=4)))
-            insns.append(Instruction("delay", ScalarArgs(imm=4)))
-            insns.append(Instruction("vmul.bf16", VectorArgs(vd=7, vs1=1, vs2=5)))
             insns.append(Instruction("delay", ScalarArgs(imm=4)))
 
             insns.append(Instruction("vstore", VectorArgs(vd=6, rs1=3, imm12=0)))

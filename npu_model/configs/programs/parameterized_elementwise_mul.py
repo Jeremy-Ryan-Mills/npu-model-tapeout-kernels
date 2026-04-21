@@ -109,8 +109,6 @@ def make_elementwise_mul_instructions(
 
             insns.append(Instruction("vmul.bf16", VectorArgs(vd=4, vs1=0, vs2=2)))
             insns.append(Instruction("delay", ScalarArgs(imm=4)))
-            insns.append(Instruction("vmul.bf16", VectorArgs(vd=5, vs1=1, vs2=3)))
-            insns.append(Instruction("delay", ScalarArgs(imm=4)))
 
             insns.append(Instruction("vstore", VectorArgs(vd=4, rs1=3, imm12=0)))
             insns.append(Instruction("delay", ScalarArgs(imm=16)))

@@ -135,10 +135,8 @@ def make_elementwise_add_instructions(
             insns.append(Instruction("vload", VectorArgs(vd=3, rs1=2, imm12=32)))
             insns.append(Instruction("delay", ScalarArgs(imm=16)))
 
-            # Elementwise add: (v4, v5) = (v0+v2, v1+v3)
+            # Elementwise add: (v4, v5) = (v0+v2, v1+v3)  — pair-op writes both
             insns.append(Instruction("vadd.bf16", VectorArgs(vd=4, vs1=0, vs2=2)))
-            insns.append(Instruction("delay", ScalarArgs(imm=4)))
-            insns.append(Instruction("vadd.bf16", VectorArgs(vd=5, vs1=1, vs2=3)))
             insns.append(Instruction("delay", ScalarArgs(imm=4)))
 
             # Store to VMEM_C then DMA to DRAM
