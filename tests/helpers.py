@@ -1,13 +1,25 @@
 import io
 import tempfile
 from contextlib import nullcontext, redirect_stdout
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
+import gc
 
 import torch
 
 from npu_model.logging import LoggerConfig
 from npu_model.simulation import Simulation
+
+
+_ACTIVE_SIMULATIONS: list[Simulation] = []
+
+
+def cleanup_tracked_simulations() -> None:
+    while _ACTIVE_SIMULATIONS:
+        sim = _ACTIVE_SIMULATIONS.pop()
+        sim.close()
+    gc.collect()
 
 
 def run_simulation(
@@ -18,7 +30,19 @@ def run_simulation(
     verbose: bool = False,
     ignore_runtime_errors: bool = False,
     before_run: Callable[[Simulation], None] | None = None,
+    randomize_init: bool = False,
+    init_seed: int = 42,
 ) -> Simulation:
+    simulation_hardware_config = hardware_config
+    if randomize_init:
+        simulation_hardware_config = replace(
+            hardware_config,
+            arch_state_config=replace(
+                hardware_config.arch_state_config,
+                randomize_init=True,
+                init_seed=init_seed,
+            ),
+        )
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False
     ) as handle:
@@ -26,12 +50,13 @@ def run_simulation(
 
     try:
         sim = Simulation(
-            hardware_config=hardware_config,
+            hardware_config=simulation_hardware_config,
             logger_config=LoggerConfig(filename=trace_path),
             program=program,
             verbose=verbose,
             ignore_runtime_errors=ignore_runtime_errors,
         )
+        _ACTIVE_SIMULATIONS.append(sim)
         if before_run is not None:
             before_run(sim)
 
