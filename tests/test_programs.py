@@ -28,7 +28,7 @@ def test_registered_program_executes(
     sim = run_simulation(
         program,
         hardware_config_cls(),
-        max_cycles=max_cycles,
+        max_cycles=getattr(program, "kernel_max_cycles", max_cycles),
         verbose=sim_verbose,
     )
 
