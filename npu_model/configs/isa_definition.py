@@ -566,6 +566,7 @@ class CSRRCI(ScalarComputeImm, CSRType, exu=EXU.SCALAR, opcode=0b1110011, funct3
         state.write_xrf(self.rd, old)
 
 class ECALL(Nullary, IType, exu=EXU.SCALAR, opcode=0b1110011, funct3=0b000):
+    imm: Imm12 = Imm12(0)
     def exec(self, state: ArchState) -> None:
         pass
 
