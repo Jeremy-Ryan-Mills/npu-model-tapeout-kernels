@@ -28,25 +28,25 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)     # activations
-delay 16
+delay 34
 vload m1, 0(x2)     # weights
-delay 16
+delay 34
 
 # --- Matmul ---
 vmatpush.weight.mxu0 w0, m1
 # VPU local transfer (1KB) is ~16 cycles at 64B/cycle
-delay 16
-vmatmul.mxu0 acc0, m0, w0
 delay 32
+vmatmul.mxu0 acc0, m0, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m2, acc0
 delay 32
 
 # --- MRF -> VMEM ---
 vstore m2, 0(x3)
-delay 16
+delay 34
 vstore m3, 32(x3)
 # two vstores are ~2x16 cycles; add slack before DMA reads VMEM
-delay 16
+delay 34
 
 # --- VMEM -> DRAM ---
 # DRAM_OUTPUT_BASE = 0x0800: LUI 1 (0x1000) + ADDI -2048 = 0x0800

@@ -42,31 +42,31 @@ dma.wait.ch1
 
 # --- K tile 0: acc[0] = A_K0 @ B_K0 (reset) ---
 vload m0, 0(x6)             # A_K0
-delay 16
+delay 34
 vload m1, 0(x8)             # B_K0
-delay 16
+delay 34
 vmatpush.weight.mxu0 w0, m1
-delay 16
-vmatmul.mxu0 acc0, m0, w0
 delay 32
+vmatmul.mxu0 acc0, m0, w0
+delay 96
 
 # --- K tile 1: acc[0] += A_K1 @ B_K1 (accumulate) ---
 vload m2, 0(x7)             # A_K1
-delay 16
+delay 34
 vload m3, 0(x9)             # B_K1
-delay 16
+delay 34
 vmatpush.weight.mxu0 w0, m3
-delay 16
-vmatmul.acc.mxu0 acc0, m2, w0
 delay 32
+vmatmul.acc.mxu0 acc0, m2, w0
+delay 96
 
 # --- Pop accumulator, store halves to VMEM, DMA out ---
 vmatpop.bf16.acc.mxu0 m4, acc0     # (m4, m5) = C bf16
 delay 32
 vstore m4, 0(x10)           # OUT_H0
-delay 16
+delay 34
 vstore m5, 0(x11)           # OUT_H1
-delay 16
+delay 34
 dma.store.ch0 x5, x10, x13
 dma.wait.ch0
 ecall

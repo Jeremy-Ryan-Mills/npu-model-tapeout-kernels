@@ -50,21 +50,23 @@ def read_word(data: torch.Tensor) -> int:
 
 
 def make_dma_load_visibility_scenario(cfg: DefaultHardwareConfig) -> Scenario:
+
     latency_cycles = dma_transfer_cycles(cfg, TRANSFER_BYTES)
     stale_tile = repeated_word_bytes(STALE_WORD, TRANSFER_BYTES)
     fresh_tile = repeated_word_bytes(FRESH_WORD, TRANSFER_BYTES)
 
     instrs: list[Instruction] = [
-        ADDI(rd=x(1), rs1=x(0), imm=VMEM_DST_BASE),
-        ADDI(rd=x(2), rs1=x(0), imm=DRAM_SRC_BASE),
-        ADDI(rd=x(3), rs1=x(0), imm=TRANSFER_BYTES),
-        DMA_CONFIG_CH0(rs1=x(0)),
-        DELAY(imm=1),
-        DMA_LOAD_CH0(rd=x(1), rs1=x(2), rs2=x(3)),
-        LW(rd=x(10), imm=0, rs1=x(1)),
-        DELAY(imm=latency_cycles),
-        LW(rd=x(11), imm=0, rs1=x(1)),
+            ADDI(rd=x(1), rs1=x(0), imm=VMEM_DST_BASE),
+            ADDI(rd=x(2), rs1=x(0), imm=DRAM_SRC_BASE),
+            ADDI(rd=x(3), rs1=x(0), imm=TRANSFER_BYTES),
+            DMA_CONFIG_CH0(rs1=x(0)),
+            DELAY(imm=1),
+            DMA_LOAD_CH0(rd=x(1), rs1=x(2), rs2=x(3)),
+            LW(rd=x(10), imm=0, rs1=x(1)),
+            DELAY(imm=latency_cycles),
+            LW(rd=x(11), imm=0, rs1=x(1)),
     ]
+    
     program = InstantiableProgram(instrs)
     program.memory_regions = [(DRAM_SRC_BASE, fresh_tile.clone())]
 
@@ -85,7 +87,7 @@ def make_dma_load_visibility_scenario(cfg: DefaultHardwareConfig) -> Scenario:
 
 
 def make_vstore_visibility_scenario(cfg: DefaultHardwareConfig) -> Scenario:
-    latency_cycles = max(1, math.ceil(TRANSFER_BYTES / cfg.vmem_bytes_per_cycle))
+    latency_cycles = 34
     stale_tile = repeated_word_bytes(STALE_WORD, TRANSFER_BYTES)
     fresh_tile = repeated_word_bytes(FRESH_WORD, TRANSFER_BYTES)
 

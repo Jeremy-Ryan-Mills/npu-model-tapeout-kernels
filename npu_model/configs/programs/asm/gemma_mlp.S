@@ -40,38 +40,38 @@ dma.wait.ch2
 
 # --- VMEM -> MRF (weights + activation) ---
 vload m0, 0(x1)     # gate W (fp8)
-delay 16
+delay 34
 vload m1, 0(x2)     # up W (fp8)
-delay 16
+delay 34
 vload m2, 0(x3)     # act (fp8)
-delay 16
+delay 34
 
 # --- Push weights to MXU0 WB slots 0 and 1 ---
 vmatpush.weight.mxu0 w0, m0
-delay 16
+delay 32
 vmatpush.weight.mxu0 w1, m1
-delay 16
+delay 32
 
 # --- Matrix Multiplications ---
 # Gate projection: activation @ gate_weight -> acc0
 vmatmul.mxu0 acc0, m2, w0
-delay 32
+delay 96
 vmatpop.bf16.acc.mxu0 m4, acc0     # gate -> m4/m5
 delay 32
 # Up projection: activation @ up_weight -> acc0
 vmatmul.mxu0 acc0, m2, w1
-delay 32
+delay 96
 vmatpop.bf16.acc.mxu0 m6, acc0     # up -> m6/m7
 delay 32
 
 # --- Element-wise Multiplication (GeGLU simplified: gate * up) ---
 vmul.bf16 m8, m4, m6
-delay 4
+delay 66
 
 # --- Store Results ---
 vstore m8, 0(x4)
-delay 16
+delay 34
 vstore m9, 32(x4)
-delay 16
+delay 34
 dma.store.ch0 x8, x4, x10
 dma.wait.ch0

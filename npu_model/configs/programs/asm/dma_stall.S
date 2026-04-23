@@ -22,10 +22,10 @@ dma.wait.ch1
 # Move VMEM data to actual computational registers
 # vload VMEM(x1=0) -> MRF 2
 vload m1, 0(x0)
-delay 16
+delay 34
 # vload VMEM(x2=1024) -> Temporary MRF 1
 vload m0, 0(x2)
-delay 100
+delay 34
 # Push Temporary MRF 1 -> MXU0 Weight Buffer 1
 vmatpush.weight.mxu0 w0, m0
 
@@ -34,11 +34,11 @@ vmatpush.weight.mxu0 w0, m0
 # Issue DMA loads again (DRAM -> VMEM)
 dma.load.ch0 x3, x0, x1
 dma.load.ch1 x4, x1, x1
-delay 16
+delay 30
 
 # --- 5. Do matmul ---
 vmatmul.mxu0 acc0, m1, w0
-delay 32 # TODO - verify delays
+delay 96 # TODO - verify delays
 # FIXME: I'm like, not at all sure how erf is supposed to work with exponent register
 # the temp fix is to just assume that we need to set it to 1 manually.
 seli e0, 1 

@@ -30,26 +30,26 @@ dma.wait.ch0
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # x h0
-delay 16
+delay 34
 vload m1, 32(x1)            # x h1
-delay 16
+delay 34
 
 # --- Compute ---
 vadd.bf16 m2, m0, m0        # (m2, m3) = x + x
-delay 4
+delay 66
 vsub.bf16 m4, m2, m0        # (m4, m5) = identity(x) = (x+x) - x
-delay 4
+delay 66
 vsquare.bf16 m6, m4         # (m6, m7) = identity^2
-delay 4
+delay 66
 vcube.bf16 m8, m0           # (m8, m9) = x^3
-delay 4
+delay 66
 vmul.bf16 m10, m6, m8       # (m10, m11) = result
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m10, 0(x2)
-delay 16
+delay 34
 vstore m11, 32(x2)
-delay 16
+delay 34
 dma.store.ch0 x4, x2, x5
 dma.wait.ch0

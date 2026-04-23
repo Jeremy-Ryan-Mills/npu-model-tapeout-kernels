@@ -60,60 +60,60 @@ dma.wait.ch0
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # Q
-delay 16
+delay 34
 vload m2, 0(x2)             # K
-delay 16
+delay 34
 vload m4, 0(x3)             # V
-delay 16
+delay 34
 vload m6, 0(x4)             # scale h0
-delay 16
+delay 34
 vload m7, 0(x5)             # scale h1
-delay 16
+delay 34
 
 # --- Matmul 1: scores = Q @ K (push K as weight; activation = Q) ---
 vmatpush.weight.mxu0 w0, m2
-delay 16
-vmatmul.mxu0 acc0, m0, w0
 delay 32
+vmatmul.mxu0 acc0, m0, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m10, acc0    # (m10, m11)
 delay 32
 
 # --- Scale: (m12, m13) = scores * scale ---
 vmul.bf16 m12, m10, m6
-delay 4
+delay 66
 
 # --- Stable softmax ---
 vredmax.row.bf16 m14, m12
-delay 4
+delay 69
 vsub.bf16 m16, m12, m14
-delay 4
+delay 66
 vexp.bf16 m18, m16
-delay 16
+delay 66
 vredsum.row.bf16 m20, m18
-delay 4
+delay 69
 vrecip.bf16 m22, m20
-delay 16
+delay 66
 vmul.bf16 m24, m18, m22
-delay 4
+delay 66
 
 # --- Pack probs BF16 -> FP8 into m26 with unit scale ---
 seli e0, 1
 vpack.bf16.fp8 m26, m24, e0
-delay 16
+delay 66
 
 # --- Matmul 2: out = packed_probs @ V ---
 vmatpush.weight.mxu0 w0, m4
-delay 16
-vmatmul.mxu0 acc0, m26, w0
 delay 32
+vmatmul.mxu0 acc0, m26, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m28, acc0    # (m28, m29)
 delay 32
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m28, 0(x6)
-delay 16
+delay 34
 vstore m29, 0(x7)
-delay 16
+delay 34
 dma.store.ch0 x12, x6, x14
 dma.store.ch1 x13, x7, x14
 dma.wait.ch0

@@ -43,30 +43,30 @@ dma.wait.ch0
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # A fp8
-delay 16
+delay 34
 vload m2, 0(x2)             # B fp8
-delay 16
+delay 34
 vload m4, 0(x3)             # bias h0
-delay 16
+delay 34
 vload m5, 32(x3)            # bias h1
-delay 16
+delay 34
 
 # --- op_a: fp8 matmul via MXU ---
 vmatpush.weight.mxu0 w0, m2
-delay 16
-vmatmul.mxu0 acc0, m0, w0
 delay 32
+vmatmul.mxu0 acc0, m0, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m6, acc0     # (m6, m7) = C bf16
 delay 32
 
 # --- op_b: bias add ---
 vadd.bf16 m8, m6, m4                # (m8, m9) = C + bias
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m8, 0(x4)
-delay 16
+delay 34
 vstore m9, 32(x4)
-delay 16
+delay 34
 dma.store.ch0 x8, x4, x10
 dma.wait.ch0

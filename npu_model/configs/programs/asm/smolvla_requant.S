@@ -35,16 +35,16 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # X h0
-delay 16
+delay 34
 vload m1, 0(x2)             # X h1
-delay 16
+delay 34
 
 # --- Pack bf16 pair (m0,m1) -> fp8 tile m2 ---
 vpack.bf16.fp8 m2, m0, e5
-delay 8
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m2, 0(x3)
-delay 16
+delay 34
 dma.store.ch0 x6, x3, x7
 dma.wait.ch0

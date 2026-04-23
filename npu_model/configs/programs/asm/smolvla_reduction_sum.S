@@ -31,16 +31,16 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # X h0
-delay 16
+delay 34
 vload m1, 32(x1)            # X h1
-delay 16
+delay 34
 
 # --- Row-sum broadcast: (m4, m5) = rowsum(m0, m1) ---
 vredsum.row.bf16 m4, m0
-delay 4
+delay 69
 
 # --- MRF -> VMEM -> DRAM (only h0; output is 32x16) ---
 vstore m4, 0(x2)
-delay 16
+delay 34
 dma.store.ch0 x5, x2, x6
 dma.wait.ch0

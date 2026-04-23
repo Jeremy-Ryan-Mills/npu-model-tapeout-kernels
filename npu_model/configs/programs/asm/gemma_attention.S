@@ -42,44 +42,44 @@ dma.wait.ch2
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)     # Q (fp8 tile)
-delay 16
+delay 34
 vload m1, 0(x2)     # K (fp8 tile)
-delay 16
+delay 34
 vload m2, 0(x4)     # scale low half
-delay 16
+delay 34
 vload m3, 32(x4)    # scale high half
-delay 16
+delay 34
 
 # --- Push K to WB slot 0, compute scores = Q @ K, pop bf16 ---
 vmatpush.weight.mxu0 w0, m1
-delay 16
-vmatmul.mxu0 acc0, m0, w0
 delay 32
+vmatmul.mxu0 acc0, m0, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m4, acc0     # scores -> m4/m5
 delay 32
 
 # scores_scaled = scores * scale
 vmul.bf16 m6, m4, m2
-delay 4
+delay 66
 
 # --- Softmax (unnormalized variant: no max subtraction) ---
 # exp_scores = exp(scores_scaled)
 vexp.bf16 m8, m6
-delay 16
+delay 66
 # row_sum = sum(exp_scores) broadcast across columns
 vredsum.row.bf16 m10, m8
-delay 4
+delay 69
 # inv_row_sum = 1 / row_sum
 vrecip.bf16 m12, m10
-delay 16
+delay 66
 # softmax_scores = exp_scores * inv_row_sum
 vmul.bf16 m14, m8, m12
-delay 4
+delay 66
 
 # --- Store softmax scores (bf16 tile) ---
 vstore m14, 0(x5)
-delay 16
+delay 34
 vstore m15, 32(x5)
-delay 16
+delay 34
 dma.store.ch0 x10, x5, x12
 dma.wait.ch0

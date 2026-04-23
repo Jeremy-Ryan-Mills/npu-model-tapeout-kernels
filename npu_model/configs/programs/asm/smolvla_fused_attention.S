@@ -71,49 +71,49 @@ seli e0, 1
 
 # --- Q: VMEM -> MRF (4 x [32,16] blocks = [32,64]) ---
 vload m0, 0(x1)             # Q_lo h0
-delay 16
+delay 34
 vload m1, 32(x1)            # Q_lo h1
-delay 16
+delay 34
 vload m2, 64(x1)            # Q_hi h0
-delay 16
+delay 34
 vload m3, 96(x1)            # Q_hi h1
-delay 16
+delay 34
 
 # --- Q_lo (m0,m1) bf16 -> m4 fp8 via acc[1] roundtrip ---
 vmatpush.acc.bf16.mxu0 acc1, m0
 delay 32
 vmatpop.fp8.acc.mxu0 m4, acc1, e0
-delay 16
+delay 32
 
 # --- Q_hi (m2,m3) bf16 -> m5 fp8 ---
 vmatpush.acc.bf16.mxu0 acc1, m2
 delay 32
 vmatpop.fp8.acc.mxu0 m5, acc1, e0
-delay 16
+delay 32
 
 # --- Scale: load into (m6, m7) (same 1024-B block broadcast to both halves) ---
 vload m6, 0(x6)
-delay 16
+delay 34
 vload m7, 0(x6)
-delay 16
+delay 34
 
 # --- Initialize online-softmax state ---
 vli.all m8, -100            # m_prev h0 (-100 as -inf proxy)
-delay 16
+delay 65
 vli.all m9, -100            # m_prev h1
-delay 16
+delay 65
 vli.all m10, 0              # l_prev h0
-delay 16
+delay 65
 vli.all m11, 0              # l_prev h1
-delay 16
+delay 65
 vli.all m12, 0              # O_left h0
-delay 16
+delay 65
 vli.all m13, 0              # O_left h1
-delay 16
+delay 65
 vli.all m14, 0              # O_right h0
-delay 16
+delay 65
 vli.all m15, 0              # O_right h1
-delay 16
+delay 65
 
 # ======================================================================
 # K TILE 0  (k_seq 0:32)
@@ -121,131 +121,131 @@ delay 16
 
 # --- Load KT0: K^T[64,32] column-blocked -> (m16,m17)=KT_top, (m18,m19)=KT_bot ---
 vload m16, 0(x2)
-delay 16
+delay 34
 vload m17, 32(x2)
-delay 16
+delay 34
 vload m18, 64(x2)
-delay 16
+delay 34
 vload m19, 96(x2)
-delay 16
+delay 34
 
 # --- KT_top (m16,m17) bf16 -> m20 fp8 ---
 vmatpush.acc.bf16.mxu0 acc1, m16
 delay 32
 vmatpop.fp8.acc.mxu0 m20, acc1, e0
-delay 16
+delay 32
 
 # --- KT_bot (m18,m19) bf16 -> m22 fp8 ---
 vmatpush.acc.bf16.mxu0 acc1, m18
 delay 32
 vmatpop.fp8.acc.mxu0 m22, acc1, e0
-delay 16
+delay 32
 
 # --- Load VT0: V_std[32,64] column-blocked -> (m24,m25)=V_left, (m26,m27)=V_right ---
 vload m24, 0(x4)
-delay 16
+delay 34
 vload m25, 32(x4)
-delay 16
+delay 34
 vload m26, 64(x4)
-delay 16
+delay 34
 vload m27, 96(x4)
-delay 16
+delay 34
 
 # --- V_left (m24,m25) bf16 -> m28 fp8 ---
 vmatpush.acc.bf16.mxu0 acc1, m24
 delay 32
 vmatpop.fp8.acc.mxu0 m28, acc1, e0
-delay 16
+delay 32
 
 # --- V_right (m26,m27) bf16 -> m30 fp8 ---
 vmatpush.acc.bf16.mxu0 acc1, m26
 delay 32
 vmatpop.fp8.acc.mxu0 m30, acc1, e0
-delay 16
+delay 32
 
 # --- Q @ K^T: acc[0] = Q_lo @ KT_top + Q_hi @ KT_bot ---
 vmatpush.weight.mxu0 w0, m20
-delay 16
+delay 32
 vmatmul.mxu0 acc0, m4, w0
-delay 32
+delay 96
 vmatpush.weight.mxu0 w0, m22
-delay 16
-vmatmul.acc.mxu0 acc0, m5, w0
 delay 32
+vmatmul.acc.mxu0 acc0, m5, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m32, acc0    # (m32, m33) = scores
 delay 32
 
 # --- scaled = scores * scale ---
 vmul.bf16 m34, m32, m6
-delay 4
+delay 66
 
 # --- tile_max = rowmax(scaled) ---
 vredmax.row.bf16 m36, m34
-delay 4
+delay 69
 
 # --- m_new = max(m_prev, tile_max) ---
 vmaximum.bf16 m38, m8, m36
-delay 4
+delay 69
 
 # --- exp_diff = exp(m_prev - m_new) ---
 vsub.bf16 m36, m8, m38
-delay 4
+delay 66
 vexp.bf16 m36, m36
-delay 16
+delay 66
 
 # --- O *= exp_diff ---
 vmul.bf16 m12, m12, m36     # O_left
-delay 4
+delay 66
 vmul.bf16 m14, m14, m36     # O_right
-delay 4
+delay 66
 
 # --- exp_s = exp(scaled - m_new) ---
 vsub.bf16 m40, m34, m38
-delay 4
+delay 66
 vexp.bf16 m40, m40
-delay 16
+delay 66
 
 # --- exp_s (m40,m41) bf16 -> m42 fp8 ---
 vmatpush.acc.bf16.mxu0 acc1, m40
 delay 32
 vmatpop.fp8.acc.mxu0 m42, acc1, e0
-delay 16
+delay 32
 
 # --- vc_left = exp_s @ V_left ---
 vmatpush.weight.mxu0 w0, m28
-delay 16
-vmatmul.mxu0 acc0, m42, w0
 delay 32
+vmatmul.mxu0 acc0, m42, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m44, acc0    # (m44, m45)
 delay 32
 
 # --- vc_right = exp_s @ V_right ---
 vmatpush.weight.mxu0 w0, m30
-delay 16
-vmatmul.mxu0 acc0, m42, w0
 delay 32
+vmatmul.mxu0 acc0, m42, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m46, acc0    # (m46, m47)
 delay 32
 
 # --- O += V contribution ---
 vadd.bf16 m12, m12, m44     # O_left
-delay 4
+delay 66
 vadd.bf16 m14, m14, m46     # O_right
-delay 4
+delay 66
 
 # --- l = exp_diff * l + rowsum(exp_s) ---
 vmul.bf16 m48, m36, m10
-delay 4
+delay 66
 vredsum.row.bf16 m50, m40
-delay 4
+delay 69
 vadd.bf16 m10, m48, m50
-delay 4
+delay 66
 
 # --- m_prev = m_new (vmov is single-register; copy both halves explicitly) ---
 vmov m8, m38
-delay 16
+delay 66
 vmov m9, m39
-delay 16
+delay 66
 
 # ======================================================================
 # K TILE 1  (k_seq 32:64)
@@ -253,116 +253,116 @@ delay 16
 
 # --- Load KT1 ---
 vload m16, 0(x3)
-delay 16
+delay 34
 vload m17, 32(x3)
-delay 16
+delay 34
 vload m18, 64(x3)
-delay 16
+delay 34
 vload m19, 96(x3)
-delay 16
+delay 34
 vmatpush.acc.bf16.mxu0 acc1, m16
 delay 32
 vmatpop.fp8.acc.mxu0 m20, acc1, e0
-delay 16
+delay 32
 vmatpush.acc.bf16.mxu0 acc1, m18
 delay 32
 vmatpop.fp8.acc.mxu0 m22, acc1, e0
-delay 16
+delay 32
 
 # --- Load VT1 ---
 vload m24, 0(x5)
-delay 16
+delay 34
 vload m25, 32(x5)
-delay 16
+delay 34
 vload m26, 64(x5)
-delay 16
+delay 34
 vload m27, 96(x5)
-delay 16
+delay 34
 vmatpush.acc.bf16.mxu0 acc1, m24
 delay 32
 vmatpop.fp8.acc.mxu0 m28, acc1, e0
-delay 16
+delay 32
 vmatpush.acc.bf16.mxu0 acc1, m26
 delay 32
 vmatpop.fp8.acc.mxu0 m30, acc1, e0
-delay 16
+delay 32
 
 # --- Q @ K1^T ---
 vmatpush.weight.mxu0 w0, m20
-delay 16
+delay 32
 vmatmul.mxu0 acc0, m4, w0
-delay 32
+delay 96
 vmatpush.weight.mxu0 w0, m22
-delay 16
-vmatmul.acc.mxu0 acc0, m5, w0
 delay 32
+vmatmul.acc.mxu0 acc0, m5, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m32, acc0
 delay 32
 vmul.bf16 m34, m32, m6
-delay 4
+delay 66
 vredmax.row.bf16 m36, m34
-delay 4
+delay 69
 vmaximum.bf16 m38, m8, m36
-delay 4
+delay 69
 vsub.bf16 m36, m8, m38
-delay 4
+delay 66
 vexp.bf16 m36, m36
-delay 16
+delay 66
 vmul.bf16 m12, m12, m36
-delay 4
+delay 66
 vmul.bf16 m14, m14, m36
-delay 4
+delay 66
 vsub.bf16 m40, m34, m38
-delay 4
+delay 66
 vexp.bf16 m40, m40
-delay 16
+delay 66
 vmatpush.acc.bf16.mxu0 acc1, m40
 delay 32
 vmatpop.fp8.acc.mxu0 m42, acc1, e0
-delay 16
-vmatpush.weight.mxu0 w0, m28
-delay 16
-vmatmul.mxu0 acc0, m42, w0
 delay 32
+vmatpush.weight.mxu0 w0, m28
+delay 32
+vmatmul.mxu0 acc0, m42, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m44, acc0
 delay 32
 vmatpush.weight.mxu0 w0, m30
-delay 16
-vmatmul.mxu0 acc0, m42, w0
 delay 32
+vmatmul.mxu0 acc0, m42, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m46, acc0
 delay 32
 vadd.bf16 m12, m12, m44
-delay 4
+delay 66
 vadd.bf16 m14, m14, m46
-delay 4
+delay 66
 vmul.bf16 m48, m36, m10
-delay 4
+delay 66
 vredsum.row.bf16 m50, m40
-delay 4
+delay 69
 vadd.bf16 m10, m48, m50
-delay 4
+delay 66
 vmov m8, m38
-delay 16
+delay 66
 vmov m9, m39
-delay 16
+delay 66
 
 # --- Normalize: O /= l ---
 vrecip.bf16 m48, m10
-delay 16
+delay 66
 vmul.bf16 m12, m12, m48     # O_left  /= l
-delay 4
+delay 66
 vmul.bf16 m14, m14, m48     # O_right /= l
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM (4 x [32,16] blocks = [32,64]) ---
 vstore m12, 0(x7)
-delay 16
+delay 34
 vstore m13, 32(x7)
-delay 16
+delay 34
 vstore m14, 64(x7)
-delay 16
+delay 34
 vstore m15, 96(x7)
-delay 16
+delay 34
 dma.store.ch0 x14, x7, x15
 dma.wait.ch0

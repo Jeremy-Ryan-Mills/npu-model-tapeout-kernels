@@ -10,6 +10,20 @@ from .stage_data import StageData
 from .config import HardwareConfig
 from .bank_conflict import mrf_accesses, vmem_accesses
 
+LSU_OP_LATENCIES = {
+    "lb": 2,
+    "lh": 2,
+    "lw": 2,
+    "lbu": 2,
+    "lhu": 2,
+    "sb": 1,
+    "sh": 1,
+    "sw": 1,
+    "seld": 2,
+    "vload": 34,
+    "vstore": 34,
+}
+
 
 class LoadStoreUnit(ExecutionUnit):
     """
@@ -43,16 +57,7 @@ class LoadStoreUnit(ExecutionUnit):
         self._busy_cycles = 0
 
     def _get_latency(self, uop: Uop) -> int:
-        if uop.insn.mnemonic in ["vload", "vstore"]:
-            return max(
-                1,
-                math.ceil(
-                    self.config.arch_state_config.mrf_width
-                    * self.config.arch_state_config.mrf_depth
-                    / self.config.vmem_bytes_per_cycle
-                ),
-            )
-        return 1
+        return LSU_OP_LATENCIES[uop.insn.mnemonic]
 
     def tick(self, idu_output: StageData[Uop | None]) -> None:
         self.cycle += 1
@@ -67,7 +72,9 @@ class LoadStoreUnit(ExecutionUnit):
         if self.in_flight is None:
             uop = idu_output.peek()
             if uop is not None:
-                assert uop.insn.exu == EXU.LSU, "Non-LSU instruction passed to LoadStoreUnit."
+                assert (
+                    uop.insn.exu == EXU.LSU
+                ), "Non-LSU instruction passed to LoadStoreUnit."
                 label = f"{self.name}:{uop.insn.mnemonic}"
                 mrf_banks = mrf_accesses(uop.insn)
                 vmem_banks = vmem_accesses(uop.insn, self.arch_state)

@@ -31,24 +31,24 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x4)             # A fp8
-delay 16
+delay 34
 vload m1, 0(x5)             # B fp8
-delay 16
+delay 34
 
 # --- fp8 matmul via MXU ---
 vmatpush.weight.mxu0 w0, m1
-delay 16
-vmatmul.mxu0 acc0, m0, w0
 delay 32
+vmatmul.mxu0 acc0, m0, w0
+delay 96
 vmatpop.bf16.acc.mxu0 m2, acc0     # (m2, m3) = C bf16
 delay 32
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m2, 0(x6)            # OUT_H0
-delay 16
+delay 34
 addi x9, x6, 1024           # x9 = 0x2C00 VMEM_OUT_H1
 vstore m3, 0(x9)            # OUT_H1
-delay 16
+delay 34
 dma.store.ch0 x3, x6, x8
 dma.wait.ch0
 ecall

@@ -32,17 +32,17 @@ dma.wait.ch1
 
 # --- Load 2 halves per operand (imm12 in units of 32 bytes) ---
 vload m0, 0(x1)             # A h0
-delay 16
+delay 34
 vload m1, 32(x1)            # A h1 (next 1024 B)
-delay 16
+delay 34
 vload m2, 0(x2)             # B h0
-delay 16
+delay 34
 vload m3, 32(x2)            # B h1
-delay 16
+delay 34
 
 # --- Per-half add ---
 vadd.bf16 m4, m0, m2
-delay 4
+delay 66
 # FIXME: In OG kernel but seems like a bug.
 # New semantics = one add necessary to sum 32x32
 # vadd.bf16 m5, m1, m3
@@ -50,8 +50,8 @@ delay 4
 
 # --- Store: MRF -> VMEM -> DRAM ---
 vstore m4, 0(x3)
-delay 16
+delay 34
 vstore m5, 32(x3)
-delay 20
+delay 34
 dma.store.ch0 x6, x3, x7
 dma.wait.ch0

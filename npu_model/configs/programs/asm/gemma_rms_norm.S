@@ -29,46 +29,46 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)     # x low half
-delay 16
+delay 34
 vload m1, 32(x1)    # x high half
-delay 16
+delay 34
 vload m2, 0(x2)     # eps low
-delay 16
+delay 34
 vload m3, 32(x2)    # eps high
-delay 16
+delay 34
 
 # --- RMS Norm Compute ---
 # x_sq = x * x
 vmul.bf16 m4, m0, m0
-delay 5
+delay 66
 # sum_sq over columns, broadcast back across each row
 vredsum.row.bf16 m6, m4
 delay 5
 # mean_sq = sum_sq * (1/ROW_SIZE)
 vli.all m8, 32
-delay 2
+delay 65
 vli.all m9, 32
-delay 2
+delay 65
 vrecip.bf16 m10, m8
-delay 17
+delay 66
 vmul.bf16 m12, m6, m10
-delay 5
+delay 66
 # var_eps = mean_sq + eps
 vadd.bf16 m14, m12, m2
-delay 5
+delay 66
 # rsqrt = 1 / sqrt(var_eps)
 vsqrt.bf16 m16, m14
-delay 17
+delay 66
 vrecip.bf16 m18, m16
-delay 17
+delay 66
 # output = x * rsqrt
 vmul.bf16 m20, m0, m18
-delay 5
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m20, 0(x3)
-delay 16
+delay 34
 vstore m21, 32(x3)
-delay 16
+delay 34
 dma.store.ch0 x6, x3, x7
 dma.wait.ch0

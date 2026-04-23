@@ -30,36 +30,36 @@ dma.wait.ch0
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # x h0
-delay 16
+delay 34
 vload m1, 32(x1)            # x h1
-delay 16
+delay 34
 
 # --- Broadcast constants ---
 vli.all m2, -1              # -1.0 h0
-delay 2
+delay 65
 vli.all m3, -1              # -1.0 h1
-delay 2
+delay 65
 vli.all m4, 1               # +1.0 h0
-delay 2
+delay 65
 vli.all m5, 1               # +1.0 h1
-delay 2
+delay 65
 
 # --- SiLU: x / (1 + exp(-x)) ---
 vmul.bf16 m6, m0, m2        # (m6, m7) = -x
-delay 4
+delay 66
 vexp.bf16 m8, m6            # (m8, m9) = exp(-x)
-delay 16
+delay 66
 vadd.bf16 m10, m8, m4       # (m10, m11) = 1 + exp(-x)
-delay 4
+delay 66
 vrecip.bf16 m12, m10        # (m12, m13) = sigmoid(x)
-delay 16
+delay 66
 vmul.bf16 m14, m0, m12      # (m14, m15) = silu(x)
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m14, 0(x2)
-delay 16
+delay 34
 vstore m15, 32(x2)
-delay 16
+delay 34
 dma.store.ch0 x4, x2, x5
 dma.wait.ch0

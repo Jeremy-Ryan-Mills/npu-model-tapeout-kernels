@@ -56,39 +56,39 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # X h0
-delay 16
+delay 34
 vload m1, 32(x1)            # X h1
-delay 16
+delay 34
 vload m6, 0(x2)             # inv_dim h0
-delay 16
+delay 34
 vload m7, 32(x2)            # inv_dim h1
-delay 16
+delay 34
 vload m8, 0(x3)             # eps h0
-delay 16
+delay 34
 vload m9, 32(x3)            # eps h1
-delay 16
+delay 34
 
 # --- Compute: y = x * rsqrt(mean(x^2) + eps) ---
 vsquare.bf16 m2, m0         # (m2, m3) = X^2
-delay 4
+delay 66
 vredsum.row.bf16 m4, m2     # (m4, m5) = rowsum(X^2)
-delay 4
+delay 69
 vmul.bf16 m10, m4, m6       # (m10, m11) = mean(X^2) = rowsum * inv_dim
-delay 4
+delay 66
 vadd.bf16 m12, m10, m8      # (m12, m13) = mean + eps
-delay 4
+delay 66
 vsqrt.bf16 m14, m12         # (m14, m15) = sqrt(mean + eps)
-delay 16
+delay 66
 vrecip.bf16 m4, m14         # (m4, m5) = inv_rms = 1/sqrt (reuses pair 4/5)
-delay 16
+delay 66
 vmul.bf16 m6, m0, m4        # (m6, m7) = Y = X * inv_rms (reuses pair 6/7)
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m6, 0(x4)
-delay 16
+delay 34
 vstore m7, 32(x4)
-delay 16
+delay 34
 dma.store.ch0 x9, x4, x13
 dma.store.ch1 x10, x15, x13
 dma.wait.ch0

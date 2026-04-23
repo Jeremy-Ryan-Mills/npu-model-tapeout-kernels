@@ -44,31 +44,31 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # A_H0
-delay 16
+delay 34
 vload m1, 0(x2)             # A_H1
-delay 16
+delay 34
 vload m2, 0(x3)             # B_H0
-delay 16
+delay 34
 vload m3, 0(x4)             # B_H1
-delay 16
+delay 34
 
 # --- Compute: a / b = a * (1/b) ---
 vrecip.bf16 m4, m2          # pair(m4,m5) = 1/pair(m2,m3) = (1/B_H0, 1/B_H1)
-delay 16
+delay 66
 # FIXME: pair semantics already wrote m5 = 1/B_H1 above
 # vrecip.bf16 m5, m3        
 # delay 16
 vmul.bf16 m6, m0, m4        # pair(m6,m7) = pair(m0,m1) * pair(m4,m5) = (A/B_H0, A/B_H1)
-delay 4
+delay 66
 # FIXME: pair semantics already wrote m7 = A_H1/B_H1 above
 # vmul.bf16 m7, m1, m5     
 # delay 4
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m6, 0(x5)            # OUT_H0
-delay 16
+delay 34
 vstore m7, 0(x6)            # OUT_H1
-delay 16
+delay 34
 dma.store.ch0 x11, x5, x13
 dma.store.ch1 x12, x6, x13
 dma.wait.ch0

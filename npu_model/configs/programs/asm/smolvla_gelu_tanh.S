@@ -53,63 +53,64 @@ dma.wait.ch0
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # X_H0
-delay 16
+delay 34
 vload m1, 0(x2)             # X_H1
-delay 16
+delay 34
 vload m2, 0(x3)             # C1 (0.044715)
-delay 16
+delay 34
 vload m3, 0(x4)             # C2 (sqrt(2/pi) ~= 0.7979)
-delay 16
+delay 34
 vload m4, 0(x5)             # C3 (0.5)
-delay 16
+delay 34
 vli.all m5, 1               # m5 = 1.0
+delay 65
 
 # --- GELU compute: h0 (pair ops act on (m0,m1) but h0 output lands in m14) ---
 vmul.bf16 m6, m0, m0        # (m6, m7) = x^2
-delay 4
+delay 66
 vmul.bf16 m7, m6, m0        # (m7, m8) = x^3
-delay 4
+delay 66
 vmul.bf16 m8, m7, m3        # (m8, m9) = 0.044715 * x^3
-delay 4
+delay 66
 vadd.bf16 m9, m0, m8        # (m9, m10) = x + 0.044715*x^3
-delay 4
+delay 66
 vmul.bf16 m10, m9, m4       # (m10, m11) = sqrt(2/pi) * (x + 0.044715*x^3)
-delay 4
+delay 66
 vtanh.bf16 m11, m10         # (m11, m12) = tanh(...)
-delay 16
+delay 66
 vadd.bf16 m12, m5, m11      # (m12, m13) = 1 + tanh(...)
-delay 4
+delay 66
 vmul.bf16 m13, m0, m2       # (m13, m14) = 0.5 * x
-delay 4
+delay 66
 vmul.bf16 m14, m13, m12     # (m14, m15) = 0.5 * x * (1 + tanh(...)) = GELU h0
-delay 4
+delay 66
 
 # --- GELU compute: h1 (explicit vs1=m1; pair ops also write neighboring regs) ---
 # FIXME: Autocomp-generated second-half pass; may be redundant given pair semantics above.
 vmul.bf16 m6, m1, m1        # (m6, m7) = x_h1^2
-delay 4
+delay 66
 vmul.bf16 m7, m6, m1        # (m7, m8) = x_h1^3
-delay 4
+delay 66
 vmul.bf16 m8, m7, m3        # (m8, m9) = 0.044715 * x_h1^3
-delay 4
+delay 66
 vadd.bf16 m9, m1, m8        # (m9, m10) = x_h1 + 0.044715*x_h1^3
-delay 4
+delay 66
 vmul.bf16 m10, m9, m4       # (m10, m11) = sqrt(2/pi) * (...)
-delay 4
+delay 66
 vtanh.bf16 m11, m10         # (m11, m12) = tanh(...)
-delay 16
+delay 66
 vadd.bf16 m12, m5, m11      # (m12, m13) = 1 + tanh(...)
-delay 4
+delay 66
 vmul.bf16 m13, m1, m2       # (m13, m14) = 0.5 * x_h1
-delay 4
+delay 66
 vmul.bf16 m15, m13, m12     # (m15, m16) = GELU h1
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m14, 0(x6)
-delay 16
+delay 34
 vstore m15, 0(x7)
-delay 16
+delay 34
 dma.store.ch0 x14, x6, x16
 dma.store.ch1 x15, x7, x16
 dma.wait.ch0

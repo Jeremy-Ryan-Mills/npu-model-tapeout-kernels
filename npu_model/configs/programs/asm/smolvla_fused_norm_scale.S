@@ -33,28 +33,28 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # variance h0
-delay 16
+delay 34
 vload m1, 32(x1)            # variance h1
-delay 16
+delay 34
 vload m2, 0(x2)             # matrix h0
-delay 16
+delay 34
 vload m3, 32(x2)            # matrix h1
-delay 16
+delay 34
 
 # --- op_a: rsqrt = 1 / sqrt(variance) ---
 vsqrt.bf16 m4, m0           # (m4, m5) = sqrt(variance)
-delay 16
+delay 66
 vrecip.bf16 m6, m4          # (m6, m7) = rsqrt(variance)
-delay 16
+delay 66
 
 # --- op_b: out = matrix * rsqrt ---
 vmul.bf16 m8, m2, m6        # (m8, m9) = out
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m8, 0(x3)
-delay 16
+delay 34
 vstore m9, 32(x3)
-delay 16
+delay 34
 dma.store.ch0 x6, x3, x7
 dma.wait.ch0

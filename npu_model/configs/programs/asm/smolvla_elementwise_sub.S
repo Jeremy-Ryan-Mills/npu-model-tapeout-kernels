@@ -30,25 +30,25 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # A h0
-delay 16
+delay 34
 vload m1, 32(x1)            # A h1
-delay 16
+delay 34
 vload m2, 0(x2)             # B h0
-delay 16
+delay 34
 vload m3, 32(x2)            # B h1
-delay 16
+delay 34
 
 # --- Elementwise subtract ---
 vsub.bf16 m4, m0, m2        # pair(m4,m5) = pair(m0,m1) - pair(m2,m3) = (A-B h0, A-B h1)
-delay 4
+delay 66
 # FIXME: pair semantics already wrote m5 = A_h1-B_h1 above
 # vsub.bf16 m5, m1, m3
 # delay 4
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m4, 0(x3)
-delay 16
+delay 34
 vstore m5, 32(x3)
-delay 20
+delay 34
 dma.store.ch0 x6, x3, x7
 dma.wait.ch0

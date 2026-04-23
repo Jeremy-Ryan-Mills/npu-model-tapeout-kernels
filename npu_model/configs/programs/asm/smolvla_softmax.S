@@ -35,29 +35,29 @@ dma.wait.ch1
 
 # --- VMEM -> MRF ---
 vload m0, 0(x1)             # X h0
-delay 16
+delay 34
 vload m1, 32(x1)            # X h1
-delay 16
+delay 34
 
 # --- Stable softmax ---
 vredmax.row.bf16 m2, m0     # (m2, m3) = rowmax(X)
-delay 4
+delay 69
 vsub.bf16 m4, m0, m2        # (m4, m5) = X - rowmax
-delay 4
+delay 66
 vexp.bf16 m6, m4            # (m6, m7) = exp(X - rowmax)
-delay 16
+delay 66
 vredsum.row.bf16 m8, m6     # (m8, m9) = rowsum(exp)
-delay 4
+delay 69
 vrecip.bf16 m10, m8         # (m10, m11) = 1 / rowsum
-delay 16
+delay 66
 vmul.bf16 m12, m6, m10      # (m12, m13) = softmax(X)
-delay 4
+delay 66
 
 # --- MRF -> VMEM -> DRAM ---
 vstore m12, 0(x2)
-delay 16
+delay 34
 vstore m13, 32(x2)
-delay 16
+delay 34
 addi x8, x5, 1024           # x8 = 0x0F00 DRAM_OUT_H1
 addi x9, x2, 1024           # x9 = 0x3400 VMEM_OUT_H1
 dma.store.ch0 x5, x2, x6
