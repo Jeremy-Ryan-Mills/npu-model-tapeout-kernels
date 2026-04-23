@@ -35,6 +35,7 @@ class EXU(StrEnum):
     MATRIX_SYSTOLIC = "MatrixExecutionUnitSystolic"
     MATRIX_INNER = "MatrixExecutionUnitInner"
     DMA = "DmaExecutionUnit"
+    LSU = "LoadStoreUnit"
 
 
 class BoundedInt(int):
@@ -395,10 +396,10 @@ class Imm12(BoundedInt):
 # SBImm12
 class SBImm12(BoundedInt):
     """
-    Represents a 12-bit Immediate.
+    Represents a 12-bit signed byte offset for SBType branch and JALR instructions.
 
-    This class validates and coerces integer or string values into valid SBImm12
-    values within the 12-bit range (0-4095).
+    Targets must be 2-byte aligned (even), matching RISC-V SB encoding.
+    The assembler produces byte offsets (word_offset * 4) for label resolution.
     """
 
     lower_bound = -2048

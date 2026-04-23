@@ -1,17 +1,17 @@
-from typing import List, Tuple
-
 import torch
+from pathlib import Path
 
 from .instruction import Instruction
 
+ASM_FOLDER = Path("./npu_model/configs/programs/asm/")
 
 class Program:
     """
     A program is a sequence of instructions to be executed.
     """
 
-    instructions: List[Instruction] = []
-    memory_regions: List[Tuple[int, torch.Tensor]] = []
+    instructions: list[Instruction] = []
+    memory_regions: list[tuple[int, torch.Tensor]] = []
 
     def __len__(self) -> int:
         return len(self.instructions)
@@ -21,13 +21,13 @@ class Program:
 
     def get_instruction(self, pc: int) -> Instruction:
         """
-        Get the instruction at `pc`.
+        Get the instruction at byte address `pc`.
         """
-        return self.instructions[pc]
+        return self.instructions[pc // 4]
 
     def is_finished(self, pc: int) -> bool:
         """Check if program execution is complete."""
-        return pc >= len(self.instructions)
+        return pc >= len(self.instructions) * 4
 
     def assemble(self) -> list[int]:
         bytecode: list[int] = []

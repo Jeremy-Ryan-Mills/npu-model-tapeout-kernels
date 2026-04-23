@@ -1,9 +1,11 @@
-from typing import List
+from typing import Callable, List
 import torch
 
 from npu_model.software.program import Program
+from npu_model.software.instruction import Uop
 from npu_model.logging.logger import Logger, LaneType
 from npu_model.hardware.arch_state import ArchState
+from npu_model.hardware.stage_data import StageData
 
 from .hardware import Module
 from .config import HardwareConfig
@@ -11,10 +13,14 @@ from .ifu import InstructionFetch
 from .idu import InstructionDecode
 from .exu import ExecutionUnit
 
-from .exu import ScalarExecutionUnit  # noqa: F401, F403 # type: ignore
-from .mxu import MatrixExecutionUnitInner, MatrixExecutionUnitSystolic  # noqa: F401, F403 # type: ignore
-from .dma import DmaExecutionUnit  # noqa: F401, F403 # type: ignore
-from .vpu import VectorExecutionUnit  # noqa: F401, F403 # type: ignore
+from .exu import ScalarExecutionUnit  # type: ignore # noqa: F401, F403
+from .mxu import (
+    MatrixExecutionUnitInner, # type: ignore 
+    MatrixExecutionUnitSystolic, # type: ignore 
+)  # noqa: F401, F403
+from .dma import DmaExecutionUnit  # type: ignore # noqa: F401, F403
+from .vpu import VectorExecutionUnit  # type: ignore # noqa: F401, F403
+from .lsu import LoadStoreUnit  # type: ignore # noqa: F401, F403 
 
 
 class Core(Module):
@@ -70,6 +76,9 @@ class Core(Module):
             isa=self.config.isa,
         )
 
+        self.ignore_runtime_errors = False
+        self.runtime_error_reporter: Callable[[str, Exception], None] | None = None
+
         self.reset()
 
     def load_program(self, program: Program):
@@ -104,19 +113,35 @@ class Core(Module):
         self.logger.log_cycle(1)
 
         # 1. Advance program counter
-        self.arch_state.npc = self.arch_state.pc + 1
+        self.arch_state.npc = self.arch_state.pc + 4
 
         # 2. Tick EXUs (claim from InstructionDecode outputs)
         for exu in self.exus:
             idu_out = self.idu.outputs[exu]
-            exu.tick(idu_output=idu_out)
-            self.total_completed += exu.complete_count
+            try:
+                exu.tick(idu_output=idu_out)
+            except Exception as exc:
+                if not self._handle_runtime_error(f"EXU {exu.name}", exc):
+                    raise
+                self._recover_exu_fault(exu, idu_out)
+            else:
+                self.total_completed += exu.complete_count
 
         # 3. Tick IDU (claim from InstructionFetch output, dispatch to EXU outputs)
-        self.idu.tick(self.ifu.output)
+        try:
+            self.idu.tick(self.ifu.output)
+        except Exception as exc:
+            if not self._handle_runtime_error("IDU", exc):
+                raise
+            self._recover_idu_fault()
 
         # 4. Tick IFU (fetch new instructions if not stalled)
-        self.ifu.tick()
+        try:
+            self.ifu.tick()
+        except Exception as exc:
+            if not self._handle_runtime_error("IFU", exc):
+                raise
+            self._recover_ifu_fault()
 
     def is_finished(self) -> bool:
         """Check if execution is complete."""
@@ -134,3 +159,38 @@ class Core(Module):
         # Flush any pending completions in EXUs
         for exu in self.exus:
             exu.flush_completions()
+
+    def close(self) -> None:
+        self.arch_state.close()
+        self.exus.clear()
+
+    def _handle_runtime_error(self, stage: str, exc: Exception) -> bool:
+        if not self.ignore_runtime_errors:
+            return False
+        if self.runtime_error_reporter is not None:
+            self.runtime_error_reporter(stage, exc)
+        return True
+
+    def _recover_exu_fault(self, exu: ExecutionUnit, idu_out: StageData[Uop | None]) -> None:
+        idu_out.reset()
+        if hasattr(exu, "in_flight"):
+            current = getattr(exu, "in_flight")
+            if isinstance(current, list):
+                setattr(exu, "in_flight", [])
+            else:
+                setattr(exu, "in_flight", None)
+        if hasattr(exu, "_pending_completions"):
+            getattr(exu, "_pending_completions").clear()
+        if hasattr(exu, "_pending_completion_uop"):
+            setattr(exu, "_pending_completion_uop", None)
+        if hasattr(exu, "_complete_count"):
+            setattr(exu, "_complete_count", 0)
+
+    def _recover_idu_fault(self) -> None:
+        self.idu.uop = None
+        self.idu.force_unstall()
+        for output in self.idu.outputs.values():
+            output.reset()
+
+    def _recover_ifu_fault(self) -> None:
+        self.ifu.force_unstall()

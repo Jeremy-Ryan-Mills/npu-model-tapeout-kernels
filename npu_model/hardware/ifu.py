@@ -88,3 +88,6 @@ class InstructionFetch(Module):
     def is_stalled(self) -> bool:
         """Check if IFU is currently stalled."""
         return self._stalled
+    
+    def force_unstall(self) -> None:
+        self._stalled = False

@@ -58,7 +58,7 @@ Examples:
             with open(args.program) as f:
                 program = input_to_program(f)
 
-        except NameError:
+        except (FileNotFoundError, ValueError):
             print(f"Program '{args.program}' not found.")
             print("available options are a .S file or:")
             print(f"  {', '.join(npu_model.configs.programs.__all__)}")  # type: ignore

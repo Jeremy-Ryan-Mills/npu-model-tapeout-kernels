@@ -7,6 +7,30 @@ from .arch_state import ArchState
 from .config import HardwareConfig
 from .exu import ExecutionUnit
 from .stage_data import StageData
+from .bank_conflict import vmem_accesses
+
+
+def dma_offchip_cycles(config: HardwareConfig, nbytes: int) -> int:
+    bytes_per_beat = config.offchip_link_width_bits // 8
+    command_bytes = 4 * config.dma_offchip_command_words
+    return (
+        math.ceil((nbytes + command_bytes) / bytes_per_beat)
+        * config.offchip_link_core_cycles_per_beat
+    )
+
+
+def vmem_transfer_cycles(config: HardwareConfig, nbytes: int) -> int:
+    bytes_per_beat = config.vmem_bus_width_bits // 8
+    return (
+        math.ceil(nbytes / bytes_per_beat) * config.vmem_bus_core_cycles_per_beat
+    )
+
+
+def dma_transfer_cycles(config: HardwareConfig, nbytes: int) -> int:
+    return max(
+        dma_offchip_cycles(config, nbytes),
+        vmem_transfer_cycles(config, nbytes),
+    )
 
 
 class DmaExecutionUnit(ExecutionUnit):
@@ -34,7 +58,6 @@ class DmaExecutionUnit(ExecutionUnit):
         dma.load/store (R-type).
         """
         if isinstance(uop.insn, RType):
-            # print("size:", int(self.arch_state.read_xrf(args.rs2)))
             return int(self.arch_state.read_xrf(uop.insn.rs2))
         return 0
 
@@ -55,8 +78,12 @@ class DmaExecutionUnit(ExecutionUnit):
         )
         self.reset()
 
+    def can_handle(self, uop: Uop) -> bool:
+        return True
+
     def reset(self) -> None:
         self.in_flight: list[Uop] = []
+        self._in_flight_vmem_banks: list[frozenset[int]] = []
         self._complete_count = 0
         self._pending_completions: list[Uop] = []
         self._total_instructions = 0
@@ -97,15 +124,21 @@ class DmaExecutionUnit(ExecutionUnit):
             # Accept new instruction
             if uop is not None:
                 assert uop.insn.exu == EXU.DMA, "Invalid arguments passed to DMA Engine"
+                # Check and acquire VMEM banks before accepting.
+                mnemonic = uop.insn.mnemonic
+                label = f"{self.name}:{mnemonic}"
+                banks = vmem_accesses(uop.insn, self.arch_state)
+                self.arch_state.conflict_checker.acquire_vmem(banks, label)
+                self._in_flight_vmem_banks.append(banks)
                 # tag instruction with execution delay
-                if uop.insn.mnemonic == "dma.config.ch<N>":
+                if mnemonic == "dma.config.ch<N>":
                     # Config is a control op; keep it fixed-latency.
                     uop.execute_delay = 1
                 else:
                     nbytes = self._bytes_for_dma_uop(uop)
                     uop.execute_delay = max(
                         1,
-                        math.ceil(nbytes / self.config.vmem_bytes_per_cycle),
+                        dma_transfer_cycles(self.config, nbytes),
                     )
                 self.in_flight.append(uop)
                 self._total_instructions += 1
@@ -143,9 +176,13 @@ class DmaExecutionUnit(ExecutionUnit):
                 # execute the instruction
                 self.in_flight[0].insn.exec(self.arch_state)
                 self._complete_count = 1
+                # Release acquired VMEM banks before retiring the instruction.
+                self.arch_state.conflict_checker.release_vmem(
+                    self._in_flight_vmem_banks[0]
+                )
+                self._in_flight_vmem_banks = self._in_flight_vmem_banks[1:]
                 # Defer completion logging to next tick
                 self._pending_completions.append(self.in_flight[0])
-                # print(f"MXU {self.name} completed instruction {self.in_flight[0].id}")
                 self.in_flight = self.in_flight[1:]
 
     def flush_completions(self) -> None:

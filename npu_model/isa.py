@@ -12,7 +12,7 @@ def _mask(val: int, bits: int):
 class IsaSpec:
     operations: dict[str,type[Instruction]] = {}
     R: dict[str,type[RType]] = {}
-    I: dict[str,type[IType[Any]]] = {}
+    I: dict[str,type[IType[Any, Any]]] = {}
     S: dict[str,type[SType]] = {}
     SB: dict[str,type[SBType]] = {}
     U: dict[str,type[UType]] = {}
@@ -87,15 +87,15 @@ class RType(Instruction, instr=False):
         IsaSpec.R[mnemonic] = cls
         return super().__init_subclass__(exu, mnemonic, opcode, instr=True)
 
-class IType[Reg: (ScalarReg, ExponentReg) = ScalarReg](Instruction, instr=False):
+class IType[RD: (ScalarReg, ExponentReg) = ScalarReg, IMM: (Imm12, SBImm12) = Imm12](Instruction, instr=False):
     funct3: Funct3         = NotImplemented
-    rd: Reg
+    rd: RD
     rs1: ScalarReg         = ScalarReg(0)
-    size: Imm12            = Imm12(0)
-    imm: Imm12             = Imm12(0)
+    imm: IMM
 
     def to_bytecode(self):
         rd = self.rd if hasattr(self, 'rd') else 0
+        rd = self.imm if hasattr(self, 'imm') else 0
         rd_b = _mask(rd, 5)
         rs1_b = _mask(self.rs1, 5)
         opcode_b = _mask(self.opcode, 7)

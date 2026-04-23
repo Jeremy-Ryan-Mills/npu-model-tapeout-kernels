@@ -4,7 +4,7 @@ from .stage_data import StageData
 from typing import TYPE_CHECKING
 from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
-from ..isa import IsaSpec, is_scalar_itype, RType
+from ..isa import IsaSpec, is_scalar_itype, RType, SBType, UJType
 from ..configs.isa_definition import DELAY, DMA_WAIT_CH0,DMA_WAIT_CH1,DMA_WAIT_CH2,DMA_WAIT_CH3,DMA_WAIT_CH4,DMA_WAIT_CH5,DMA_WAIT_CH6,DMA_WAIT_CH7
 from ..isa_types import EXU
 from ..hardware.arch_state import ArchState
@@ -51,6 +51,7 @@ class InstructionDecode(Module):
             exu: StageData(None) for exu in self.exus
         }
         self._stalled = False
+        self._control_flow_delay_slots_remaining = 0
 
     def is_finished(self) -> bool:
         """Check if DIU is finished."""
@@ -85,6 +86,15 @@ class InstructionDecode(Module):
             if uop is None:
                 return
 
+
+            if self._is_control_flow_delay_slot_violation(uop):
+                raise RuntimeError(
+                    f"Illegal control-flow instruction '{uop.insn.mnemonic}' decoded "
+                    f"in a delay-slot position on cycle {self.cycle}"
+                )
+            self._consume_delay_slot_if_needed()
+
+
             self.logger.log_stage_end(
                 uop.id, "F", lane=LaneType.IFU.value, cycle=self.cycle
             )
@@ -98,6 +108,9 @@ class InstructionDecode(Module):
                 isinstance(uop.insn, DELAY)
             ):
                 uop.dispatch_delay = uop.insn.imm
+
+            if self._is_control_flow_instruction(uop):
+                self._control_flow_delay_slots_remaining = 2
             self.uop = uop
 
             if uop.dispatch_delay > 0:
@@ -113,6 +126,9 @@ class InstructionDecode(Module):
     def is_stalled(self) -> bool:
         """Check if DIU is currently stalled."""
         return self._stalled
+    
+    def force_unstall(self) -> None:
+        self._stalled = False
 
     def dispatch(self) -> None:
         assert self.uop is not None
@@ -135,11 +151,8 @@ class InstructionDecode(Module):
             self.uop = None
             return
 
-        # FIXME: tream.ing
         target_exu = self.exu_map[self.uop.insn.exu]
-        self.outputs[target_exu].prepare(
-            self.uop
-        )
+        self.outputs[target_exu].prepare(self.uop)
 
         # if we dispatched a DMA instruction, set flag as busy here
         if self.uop.insn.exu == EXU.DMA and (
@@ -155,6 +168,19 @@ class InstructionDecode(Module):
     def claim_uop(self, ifu_output: StageData[Uop | None]) -> None:
         """Claim a new uop from IFU"""
         assert self.uop is None
+
+    def _is_control_flow_instruction(self, uop: Uop) -> bool:
+        return isinstance(uop.insn, (SBType, UJType)) or uop.insn.mnemonic == "jalr"
+
+    def _is_control_flow_delay_slot_violation(self, uop: Uop) -> bool:
+        return (
+            self._control_flow_delay_slots_remaining > 0
+            and self._is_control_flow_instruction(uop)
+        )
+
+    def _consume_delay_slot_if_needed(self) -> None:
+        if self._control_flow_delay_slots_remaining > 0:
+            self._control_flow_delay_slots_remaining -= 1
 
     def check_backpressure(self, uop: Uop) -> bool:
         if (
@@ -177,8 +203,7 @@ class InstructionDecode(Module):
         if self.outputs[target_exu].should_stall():
             # Don't end D stage - keep it active to show instruction is waiting
             # The D stage will end when we actually dispatch
-            self._stalled = True
-            return True
+            raise RuntimeError(f"Backpressure detected in IDU when running uop {uop.id} on cycle {self.cycle}")
 
         # Backpressure cleared - if we were stalled, the D stage continues:
         self._stalled = False

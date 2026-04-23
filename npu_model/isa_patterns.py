@@ -192,7 +192,7 @@ class ScalarOffsetLoad(InstructionPattern):
     Instruction pattern for instructions with a scalar destination register and base-offset operand.
 
     Matches assembly patterns of the form `instr x(rd), imm(x(rs1))`.
-    This pattern is used for the following instructions: `lb`, `lh`, `lw`, and `jalr`.
+    This pattern is used for scalar load instructions: `lb`, `lh`, and `lw`.
 
     Attributes:
         rd: The destination scalar register.
@@ -342,6 +342,29 @@ class ScalarComputeImm(InstructionPattern):
         self.imm = Imm12(imm)
 
 @dataclass(init=False)
+class JalrPattern(InstructionPattern):
+    """
+    Instruction pattern for JALR.
+
+    Matches assembly patterns of the form `jalr x(rd), x(rs1), imm`.
+    The immediate must be 2-byte aligned (even), matching RISC-V SB convention.
+
+    Attributes:
+        rd: The destination scalar register (return address).
+        rs1: The base scalar register.
+        imm: A 12-bit even immediate offset.
+    """
+    rd: ScalarReg
+    rs1: ScalarReg
+    imm: SBImm12
+    params = [x_rd, x_rs1, sbimm12]
+
+    def __init__(self, rd: ScalarReg, rs1: ScalarReg, imm: int):
+        self.rd = rd
+        self.rs1 = rs1
+        self.imm = SBImm12(imm)
+
+@dataclass(init=False)
 class ScalarComputeShamt(InstructionPattern):
     """
     Instruction pattern for the shift operator. Restricts immediate size to shamt.
@@ -382,7 +405,7 @@ class ScalarBranchImm(InstructionPattern):
     rs2: ScalarReg
     imm: SBImm12
     params = [x_rs1,x_rs2,sbimm12]
-    
+
     def __init__(self, rs1: ScalarReg, rs2: ScalarReg, imm: int):
         self.rs1 = rs1
         self.rs2 = rs2
