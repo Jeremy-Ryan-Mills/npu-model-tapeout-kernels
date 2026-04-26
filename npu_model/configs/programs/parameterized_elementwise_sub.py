@@ -87,15 +87,15 @@ def make_elementwise_sub_instructions(
 
     loop_start = len(insns)
 
+    # Fire both DMA loads; vload A while B is still in flight to hide 68cy of vload.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=5, rs2=4, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=6, rs2=4, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
-
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
     insns.append(Instruction("vload", VectorArgs(vd=2, rs1=2, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=3, rs1=2, imm12=32)))

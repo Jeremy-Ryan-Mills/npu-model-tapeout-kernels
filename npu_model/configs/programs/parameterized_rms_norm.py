@@ -117,7 +117,9 @@ def make_rms_norm_instructions(
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
-    # Load constants once (same data into both VMEM halves)
+    # Load inv_dim and eps into VMEM, then pre-load both into MRF before the loop.
+    # inv_dim gets clobbered each iteration (reused for output Y), so it must be
+    # reloaded from VMEM each group. eps is never overwritten; load it once here.
     _emit_load_imm32(15, dram_inv_dim, insns)
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=15, rs2=5, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=7, rs1=15, rs2=5, channel=1)))
@@ -130,14 +132,26 @@ def make_rms_norm_instructions(
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
+    # v8/v9 = eps: loop-invariant, not overwritten by compute. Load once here.
+    insns.append(Instruction("vload", VectorArgs(vd=8, rs1=3, imm12=0)))
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=9, rs1=3, imm12=32)))
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+
     loop_start = len(insns)
 
     # H1 addresses = H0 + HALF_BYTES
     insns.append(Instruction("add", ScalarArgs(rd=15, rs1=10, rs2=5)))
     insns.append(Instruction("add", ScalarArgs(rd=16, rs1=11, rs2=5)))
 
+    # Fire x DMA loads (H0 ch0, H1 ch1). Vload inv_dim into MRF while DMA runs.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=10, rs2=5, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=6, rs1=15, rs2=5, channel=1)))
+    # inv_dim is already in VMEM; these vloads overlap with the x DMA transfers.
+    insns.append(Instruction("vload", VectorArgs(vd=6, rs1=2, imm12=0)))
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=7, rs1=2, imm12=32)))
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
@@ -145,16 +159,6 @@ def make_rms_norm_instructions(
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-
-    # Reload inv_dim (v6, v7) and eps (v8, v9) from VMEM each group
-    insns.append(Instruction("vload", VectorArgs(vd=6, rs1=2, imm12=0)))
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=7, rs1=2, imm12=32)))
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=8, rs1=3, imm12=0)))
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=9, rs1=3, imm12=32)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
 
     # (v2, v3) = X^2

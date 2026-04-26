@@ -95,14 +95,13 @@ def make_reduction_sum_instructions(
     # H1 input addr = H0 + HALF_BYTES
     insns.append(Instruction("add", ScalarArgs(rd=10, rs1=5, rs2=3)))
 
+    # Fire both DMA loads; vload H0 while H1 is still in flight to hide 34cy.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=5, rs2=3, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=4, rs1=10, rs2=3, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
-
-    # vload (v0, v1) = X pair
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
 

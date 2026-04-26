@@ -82,6 +82,16 @@ def make_fused_silu_gate_instructions(
     insns.append(Instruction("dma.config.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
 
+    # v2-v5 are loop-invariant and not overwritten by compute; initialize once.
+    insns.append(Instruction("vli.all", VectorArgs(vd=2, imm=-1)))
+    insns.append(Instruction("delay", ScalarArgs(imm=65)))
+    insns.append(Instruction("vli.all", VectorArgs(vd=3, imm=-1)))
+    insns.append(Instruction("delay", ScalarArgs(imm=65)))
+    insns.append(Instruction("vli.all", VectorArgs(vd=4, imm=1)))
+    insns.append(Instruction("delay", ScalarArgs(imm=65)))
+    insns.append(Instruction("vli.all", VectorArgs(vd=5, imm=1)))
+    insns.append(Instruction("delay", ScalarArgs(imm=65)))
+
     loop_start = len(insns)
 
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=4, rs2=3, channel=0)))
@@ -91,15 +101,6 @@ def make_fused_silu_gate_instructions(
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
-
-    insns.append(Instruction("vli.all", VectorArgs(vd=2, imm=-1)))
-    insns.append(Instruction("delay", ScalarArgs(imm=65)))
-    insns.append(Instruction("vli.all", VectorArgs(vd=3, imm=-1)))
-    insns.append(Instruction("delay", ScalarArgs(imm=65)))
-    insns.append(Instruction("vli.all", VectorArgs(vd=4, imm=1)))
-    insns.append(Instruction("delay", ScalarArgs(imm=65)))
-    insns.append(Instruction("vli.all", VectorArgs(vd=5, imm=1)))
-    insns.append(Instruction("delay", ScalarArgs(imm=65)))
 
     # op_a: sigmoid(x)
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=6, vs1=0, vs2=2)))

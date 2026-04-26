@@ -150,20 +150,18 @@ def make_fused_matmul_bias_instructions(
 
     # n-loop
     n_loop_start = len(insns)
-    # Load A (fp8) and B (fp8) in parallel
+    # Fire A (ch0) and B (ch1). After A arrives, fire bias DMA and vload A+B
+    # in the ~1028cy bias window, hiding 68cy of vload serial time.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=14, rs2=5, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=15, rs2=5, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
+    insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=3, rs1=16, rs2=6, channel=0)))  # bias queues behind B
+    insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))   # A fp8 during B+bias window
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
-
-    # Load bias (2048 B bf16, both halves)
-    insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=3, rs1=16, rs2=6, channel=0)))
+    insns.append(Instruction("vload", VectorArgs(vd=2, rs1=2, imm12=0)))   # B fp8 during bias window
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-
-    insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))   # A fp8
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=2, rs1=2, imm12=0)))   # B fp8
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=4, rs1=3, imm12=0)))   # bias H0
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=5, rs1=3, imm12=32)))  # bias H1

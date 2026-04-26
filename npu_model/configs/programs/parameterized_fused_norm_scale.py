@@ -95,27 +95,25 @@ def make_fused_norm_scale_instructions(
 
     loop_start = len(insns)
 
+    # Fire both loads; with sequential DMA, ch1 queues behind ch0.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=5, rs2=4, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=6, rs2=4, channel=1)))
+    # Wait for var, then compute rsqrt(var) while the matrix DMA is still in flight.
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
-
-    # Load variance pair (v0, v1)
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
-
-    # Load matrix pair (v2, v3)
-    insns.append(Instruction("vload", VectorArgs(vd=2, rs1=2, imm12=0)))
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=3, rs1=2, imm12=32)))
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-
     insns.append(Instruction("vsqrt.bf16", VectorArgs(vd=4, vs1=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
     insns.append(Instruction("vrecip.bf16", VectorArgs(vd=6, vs1=4)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
+    # Matrix DMA finishes ~1028cy after var; ~200cy of that is covered above.
+    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
+    insns.append(Instruction("vload", VectorArgs(vd=2, rs1=2, imm12=0)))
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=3, rs1=2, imm12=32)))
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=8, vs1=2, vs2=6)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 

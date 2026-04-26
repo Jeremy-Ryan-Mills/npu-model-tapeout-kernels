@@ -209,13 +209,13 @@ def make_batch_matmul_instructions(
     insns.append(Instruction("addi", ScalarArgs(rd=18, rs1=15, imm=0)))  # A_k_ptr = A_m_base
     insns.append(Instruction("addi", ScalarArgs(rd=19, rs1=16, imm=0)))  # B_k_ptr = B_n_ptr
 
-    # Peeled k=0
+    # Peeled k=0; vload A tile while B is still in flight to hide 34cy.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=18, rs2=5, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=19, rs2=5, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=2)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vmatpush.weight.mxu0", VectorArgs(vs1=1)))
@@ -229,12 +229,13 @@ def make_batch_matmul_instructions(
     if K_tiles > 1:
         insns.append(Instruction("addi", ScalarArgs(rd=22, rs1=0, imm=1)))
         k_loop_start = len(insns)
+        # Vload A tile while B is still in flight to hide 34cy.
         insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=18, rs2=5, channel=0)))
         insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=19, rs2=5, channel=1)))
         insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-        insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
         insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1)))
         insns.append(Instruction("delay", ScalarArgs(imm=34)))
+        insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
         insns.append(Instruction("vload", VectorArgs(vd=1, rs1=2)))
         insns.append(Instruction("delay", ScalarArgs(imm=34)))
         insns.append(Instruction("vmatpush.weight.mxu0", VectorArgs(vs1=1)))

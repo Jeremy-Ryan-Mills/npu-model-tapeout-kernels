@@ -142,7 +142,8 @@ def make_gelu_tanh_instructions(
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
-    # Load constants once into VMEM (reuse x17 as scratch addr before loop)
+    # Load constants into VMEM, pipelining MRF vloads behind each DMA transfer.
+    # k_coeff → VMEM; then fire k_sqrt DMA and vload k_coeff into MRF while it runs.
     _emit_load_imm32(17, dram_k_coeff, insns)
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=17, rs2=6, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=8, rs1=17, rs2=6, channel=1)))
@@ -152,14 +153,34 @@ def make_gelu_tanh_instructions(
     _emit_load_imm32(17, dram_k_sqrt2pi, insns)
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=3, rs1=17, rs2=6, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=9, rs1=17, rs2=6, channel=1)))
+    # Vload k_coeff into MRF while k_sqrt DMA is running (~1028cy window, 68cy used).
+    insns.append(Instruction("vload", VectorArgs(vd=4, rs1=2, imm12=0)))   # v4 = k_coeff H0
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=5, rs1=2, imm12=32)))  # v5 = k_coeff H1
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
     _emit_load_imm32(17, dram_k_half, insns)
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=4, rs1=17, rs2=6, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=10, rs1=17, rs2=6, channel=1)))
+    # Vload k_sqrt into MRF while k_half DMA is running (~1028cy window, 68cy used).
+    insns.append(Instruction("vload", VectorArgs(vd=6, rs1=3, imm12=0)))   # v6 = k_sqrt H0
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=7, rs1=3, imm12=32)))  # v7 = k_sqrt H1
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
+
+    # k_half is now in VMEM; load into MRF. v10/v11 = 1.0 are loop-invariant too.
+    insns.append(Instruction("vload", VectorArgs(vd=8, rs1=4, imm12=0)))   # v8 = k_half H0
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=9, rs1=4, imm12=32)))  # v9 = k_half H1
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vli.all", VectorArgs(vd=10, imm=1)))         # v10 = 1.0
+    insns.append(Instruction("delay", ScalarArgs(imm=65)))
+    insns.append(Instruction("vli.all", VectorArgs(vd=11, imm=1)))         # v11 = 1.0
+    insns.append(Instruction("delay", ScalarArgs(imm=65)))
 
     loop_start = len(insns)
 
@@ -167,71 +188,44 @@ def make_gelu_tanh_instructions(
     insns.append(Instruction("add", ScalarArgs(rd=17, rs1=12, rs2=6)))  # x17 = dram_x_H1
     insns.append(Instruction("add", ScalarArgs(rd=18, rs1=13, rs2=6)))  # x18 = dram_out_H1
 
-    # DMA X_H0 → VMEM_X, X_H1 → VMEM_X_H1 (parallel)
+    # DMA X_H0 → VMEM_X, X_H1 → VMEM_X_H1 (sequential in DMA engine)
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=12, rs2=6, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=7, rs1=17, rs2=6, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
-    # vload (v0, v1) = X
+    # v0/v1 = X (per-tile, must load each iteration)
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
 
-    # vload constants (reload each group from VMEM to restore after VPU clobber)
-    insns.append(Instruction("vload", VectorArgs(vd=4, rs1=2, imm12=0)))   # k_coeff H0
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=5, rs1=2, imm12=32)))  # k_coeff H1
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=6, rs1=3, imm12=0)))   # k_sqrt H0
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=7, rs1=3, imm12=32)))  # k_sqrt H1
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=8, rs1=4, imm12=0)))   # k_half H0
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=9, rs1=4, imm12=32)))  # k_half H1
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-
-    # (v2, v3) = X²
+    # v4-v11 (k_coeff, k_sqrt, k_half, 1.0) persist from pre-loop initialization.
+    # Compute: X² → X³ → k*X³ → X+k*X³ → sqrt2pi*... → tanh → 1+tanh → 0.5*... → Y
     insns.append(Instruction("vsquare.bf16", VectorArgs(vd=2, vs1=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v12, v13) = X³ = X² * X
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=12, vs1=2, vs2=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v12, v13) = k_coeff * X³
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=12, vs1=12, vs2=4)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v12, v13) = X + k_coeff*X³
     insns.append(Instruction("vadd.bf16", VectorArgs(vd=12, vs1=0, vs2=12)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v12, v13) = sqrt(2/π) * (X + k_coeff*X³)
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=12, vs1=12, vs2=6)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v12, v13) = tanh(...)
     insns.append(Instruction("vtanh.bf16", VectorArgs(vd=12, vs1=12)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v10, v11) = 1.0 — vli.all writes a single register
-    insns.append(Instruction("vli.all", VectorArgs(vd=10, imm=1)))
-    insns.append(Instruction("delay", ScalarArgs(imm=65)))
-    insns.append(Instruction("vli.all", VectorArgs(vd=11, imm=1)))
-    insns.append(Instruction("delay", ScalarArgs(imm=65)))
-
-    # (v12, v13) = 1 + tanh(...)
     insns.append(Instruction("vadd.bf16", VectorArgs(vd=12, vs1=10, vs2=12)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v12, v13) = 0.5 * (1 + tanh(...))
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=12, vs1=12, vs2=8)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 
-    # (v14, v15) = Y = X * 0.5*(1+tanh(...))
     insns.append(Instruction("vmul.bf16", VectorArgs(vd=14, vs1=0, vs2=12)))
     insns.append(Instruction("delay", ScalarArgs(imm=66)))
 

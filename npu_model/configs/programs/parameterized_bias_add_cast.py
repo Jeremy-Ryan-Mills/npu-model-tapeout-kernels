@@ -107,21 +107,17 @@ def make_bias_add_cast_instructions(
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
 
-    # DMA: x (2048 B) → VMEM_X, bias (2048 B) → VMEM_BIAS (parallel)
+    # Fire both DMA loads; vload x halves while bias is still in flight to hide 68cy.
     _emit_load_imm32(6, dram_x, insns)
     _emit_load_imm32(7, dram_bias, insns)
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=6, rs2=4, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=7, rs2=4, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
+    insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))   # v0 = x H0 during bias wait
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))  # v1 = x H1 during bias wait
+    insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
-
-    # vload LMUL=2 input pair: (v0, v1) = x halves
-    insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))   # v0 = x H0
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-    insns.append(Instruction("vload", VectorArgs(vd=1, rs1=1, imm12=32)))  # v1 = x H1
-    insns.append(Instruction("delay", ScalarArgs(imm=34)))
-
-    # vload LMUL=2 bias pair: (v2, v3) = bias halves
     insns.append(Instruction("vload", VectorArgs(vd=2, rs1=2, imm12=0)))   # v2 = bias H0
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
     insns.append(Instruction("vload", VectorArgs(vd=3, rs1=2, imm12=32)))  # v3 = bias H1

@@ -134,15 +134,13 @@ def make_requant_instructions(
     # x10 = H1 input addr = x5 + x4
     insns.append(Instruction("add", ScalarArgs(rd=10, rs1=5, rs2=4)))
 
-    # DMA H0 → VMEM_X_H0, H1 → VMEM_X_H1 (parallel)
+    # Fire both DMA loads; vload H0 while H1 is still in flight to hide 34cy.
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=1, rs1=5, rs2=4, channel=0)))
     insns.append(Instruction("dma.load.ch<N>", DmaArgs(rd=2, rs1=10, rs2=4, channel=1)))
     insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=0)))
-    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
-
-    # vload v0 = H0, v1 = H1
     insns.append(Instruction("vload", VectorArgs(vd=0, rs1=1, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
+    insns.append(Instruction("dma.wait.ch<N>", DmaArgs(channel=1)))
     insns.append(Instruction("vload", VectorArgs(vd=1, rs1=2, imm12=0)))
     insns.append(Instruction("delay", ScalarArgs(imm=34)))
 
