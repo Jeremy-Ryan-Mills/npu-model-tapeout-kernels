@@ -416,22 +416,21 @@ def test_fused_matmul_bias_mlir_shape(variant, M, N):
 # SaturnNPU/kernels/iree_linalg_ext.attention/variant_0_12_1024_64_bf16.mlir
 # Q(12,1024,64), K(12,1024,64), V(12,64,1024) — 12 heads each 1024×64.
 # One kernel call handles one head: Q_ROWS=1024, K_SEQ=1024, HEAD_DIM=64.
-# make_fused_attention_instructions(Q_ROWS, K_SEQ, HEAD_DIM, dram_q, dram_kt_base,
+# make_fused_attention_instructions(Q_ROWS, K_SEQ, dram_q, dram_kt_base,
 #                                   dram_vt_base, dram_scale, dram_out)
 
 
 @pytest.mark.parametrize(
-    "variant,Q_ROWS,K_SEQ,HEAD_DIM",
+    "variant,Q_ROWS,K_SEQ",
     [
-        ("12x1024x64_one_head", 1024, 1024, 64),
+        ("12x1024x64_one_head", 1024, 1024),
     ],
 )
-def test_fused_attention_mlir_shape(variant, Q_ROWS, K_SEQ, HEAD_DIM):
+def test_fused_attention_mlir_shape(variant, Q_ROWS, K_SEQ):
     _check(
         make_fused_attention_instructions(
             Q_ROWS,
             K_SEQ,
-            HEAD_DIM,
             dram_q=0,
             dram_kt_base=0,
             dram_vt_base=0,

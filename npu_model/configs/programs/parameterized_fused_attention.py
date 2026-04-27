@@ -1,9 +1,8 @@
-"""Fully parameterized fused attention (flash SDPA) kernel.
+"""Fused attention (flash SDPA) kernel with HEAD_DIM fixed at 64 (H=2).
 
 Parameterized over:
-    Q_ROWS   = any multiple of 32  (processed as Q_ROWS//32 Q-blocks in sequence)
-    HEAD_DIM = any multiple of 32  (H = HEAD_DIM//32 MXU passes for Q@K^T)
-    K_SEQ    = any multiple of 32  (K_TILES = K_SEQ//32 flash-attention tiles)
+    Q_ROWS = any multiple of 32  (processed as Q_ROWS//32 Q-blocks in sequence)
+    K_SEQ  = any multiple of 32  (K_TILES = K_SEQ//32 flash-attention tiles)
 
 Flash attention per Q-block (online softmax):
     m = -inf, l = 0, O = 0
@@ -15,45 +14,36 @@ Flash attention per Q-block (online softmax):
         m  = m'
     output = O / l
 
-MRF register layout (H = HEAD_DIM // 32, S = scratch_start):
+MRF register layout (H=2, S=scratch_start=10):
 
     Persistent (survive K-tile loop):
-      v0 .. v(H-1)           Q_fp8[i] = Q[:,i*32:(i+1)*32] fp8   (activations, odd OK)
-      v(S0)   v(S0+1)        scale pair [32,16] broadcast  S0=_even(H)
-      v(S0+2) v(S0+3)        m_prev pair
-      v(S0+4) v(S0+5)        l_prev pair
-      v(S0+6) .. v(S0+5+2H)  O[j] pairs for j=0..H-1
+      v0  v1              Q_fp8[0..1]  (Q col-block fp8 activations)
+      v2  v3              scale pair [32,16] broadcast
+      v4  v5              m_prev pair
+      v6  v7              l_prev pair
+      v8  v9  v10  v11    O[0] pair, O[1] pair
 
-    Per-tile scratch (S = _even(S0+6+2H) = _even(3H+6)):
-      v(S)   v(S+1)   KT_BF16 pair  (reused per KT segment)
-      v(S+2)          KT_FP8        (even)
-      v(S+4) v(S+5)   VT_BF16 pair  (reused per VT col-block)
-      v(S+6)          VT_FP8        (even)
-      v(S+8) v(S+9)   T_SCORES
-      v(S+10) v(S+11) T_SCALED
-      v(S+12) v(S+13) T_TMAX / exp_diff (reused)
-      v(S+14) v(S+15) T_MNEW
-      v(S+16) v(S+17) T_EXPS
-      v(S+18)         T_EXPSFP8     (even)
-      v(S+20) v(S+21) T_VC          (scratch per V col-block)
-      v(S+22) v(S+23) T_LDECAY / inv_l
-      v(S+24) v(S+25) T_LSUM
-
-    Max regs: S+25.  H=2→37  H=4→43  H=8→55  (all < 64) ✓
+    Per-tile scratch (S=12):
+      v12 v13   KT_BF16 pair
+      v14       KT_FP8
+      v16 v17   VT_BF16 pair
+      v18       VT_FP8
+      v20 v21   T_SCORES
+      v22 v23   T_SCALED
+      v24 v25   T_TMAX / exp_diff (reused)
+      v26 v27   T_MNEW
+      v28 v29   T_EXPS
+      v30       T_EXPSFP8
+      v32 v33   T_VC
+      v34 v35   T_LDECAY / inv_l
+      v36 v37   T_LSUM   (max reg 37 < 64)
 
 DRAM layouts (bf16, column-blocked; each vload = one [32,16] block = 1024 bytes):
-    Q[qb]:  [32, HEAD_DIM] col-blocked → [2H*32, 16]
-    KT[k]:  K^T[HEAD_DIM, 32] col-blocked → [2H*32, 16]
-    VT[k]:  V_std[32, HEAD_DIM] col-blocked → [2H*32, 16]
-    SCALE:  [32, 16] single block (1024 bytes, constant)
+    Q[qb]:   [32, 64] col-blocked → [4*32, 16]
+    KT[k]:   K^T[64, 32] col-blocked → [4*32, 16]
+    VT[k]:   V_std[32, 64] col-blocked → [4*32, 16]
+    SCALE:   [32, 16] single block (1024 bytes, constant)
     OUT[qb]: same layout as Q[qb]
-
-VMEM addresses (byte offsets from 0):
-    VMEM_Q     = 0
-    VMEM_KT    = TILE_BYTES
-    VMEM_VT    = 2 * TILE_BYTES
-    VMEM_SCALE = 3 * TILE_BYTES
-    VMEM_OUT   = 3 * TILE_BYTES + SCALE_BYTES
 
 Scalar register map:
     x1=VMEM_Q  x2=VMEM_KT  x3=VMEM_VT  x4=VMEM_SCALE  x5=VMEM_OUT
@@ -82,17 +72,16 @@ def _even(n: int) -> int:
     return n if n % 2 == 0 else n + 1
 
 
-def _reg_layout(H: int) -> dict:
-    """Compute MRF register base indices for HEAD_DIM_TILES = H."""
-    Q_FP8_BASE = 0
-    S0 = _even(H)
-    SCALE_BASE = S0
-    M_BASE = S0 + 2
-    L_BASE = S0 + 4
-    O_BASE = S0 + 6
-    S = _even(O_BASE + 2 * H)
-    max_reg = S + 25
-    assert max_reg < 64, f"MRF overflow: {max_reg + 1} regs needed for H={H} (max 64)"
+def _reg_layout() -> dict:
+    """MRF register base indices for HEAD_DIM=64 (H=2)."""
+    # H=2: Q_fp8 in v0..v1, scale/m/l/O in v2..v11, scratch from v12
+    Q_FP8_BASE = 0   # v0, v1
+    SCALE_BASE = 2   # v2, v3
+    M_BASE     = 4   # v4, v5
+    L_BASE     = 6   # v6, v7
+    O_BASE     = 8   # v8..v11 (2 pairs for H=2)
+    S          = 12  # scratch base (even, after v8..v11)
+    assert S + 25 < 64, "MRF overflow"
     return dict(
         Q_FP8_BASE=Q_FP8_BASE,
         SCALE_BASE=SCALE_BASE,
@@ -160,14 +149,13 @@ def _col_block(t: torch.Tensor) -> torch.Tensor:
 def make_fused_attention_instructions(
     Q_ROWS: int,
     K_SEQ: int,
-    HEAD_DIM: int,
     dram_q: int,
     dram_kt_base: int,
     dram_vt_base: int,
     dram_scale: int,
     dram_out: int,
 ) -> list:
-    """Generate flash-attention ISA instructions.
+    """Generate flash-attention ISA instructions for HEAD_DIM=64 (H=2).
 
     The Q-block and K-tile loops use hardware branch instructions.
     Inner loops over H (head-dim segments) remain Python-unrolled since
@@ -187,14 +175,14 @@ def make_fused_attention_instructions(
     """
     assert Q_ROWS % TILE == 0, f"Q_ROWS={Q_ROWS} must be multiple of {TILE}"
     assert K_SEQ % TILE == 0, f"K_SEQ={K_SEQ} must be multiple of {TILE}"
-    assert HEAD_DIM % TILE == 0, f"HEAD_DIM={HEAD_DIM} must be multiple of {TILE}"
 
-    H = HEAD_DIM // TILE
+    HEAD_DIM = 64
+    H = 2  # HEAD_DIM // TILE
     K_TILES = K_SEQ // TILE
     Q_BLOCKS = Q_ROWS // TILE
     TILE_BYTES = TILE * HEAD_DIM * BF16
 
-    R = _reg_layout(H)
+    R = _reg_layout()
     Q_FP8_BASE = R["Q_FP8_BASE"]
     SCALE_BASE = R["SCALE_BASE"]
     M_BASE = R["M_BASE"]
@@ -516,8 +504,8 @@ def fused_attention_golden(
 # ── program factory ───────────────────────────────────────────────────────────
 
 
-def _make_attn_program(Q_ROWS: int, K_SEQ: int, HEAD_DIM: int, seed: int):
-    H = HEAD_DIM // TILE
+def _make_attn_program(Q_ROWS: int, K_SEQ: int, seed: int):
+    HEAD_DIM = 64
     K_TILES = K_SEQ // TILE
     Q_BLOCKS = Q_ROWS // TILE
     TILE_BYTES = TILE * HEAD_DIM * BF16
@@ -551,7 +539,6 @@ def _make_attn_program(Q_ROWS: int, K_SEQ: int, HEAD_DIM: int, seed: int):
     insns = make_fused_attention_instructions(
         Q_ROWS=Q_ROWS,
         K_SEQ=K_SEQ,
-        HEAD_DIM=HEAD_DIM,
         dram_q=dram_q,
         dram_kt_base=dram_kt_base,
         dram_vt_base=dram_vt_base,
@@ -563,114 +550,53 @@ def _make_attn_program(Q_ROWS: int, K_SEQ: int, HEAD_DIM: int, seed: int):
 
 # ── Program classes ───────────────────────────────────────────────────────────
 
-# HEAD_DIM=64 (H=2) — SmolVLA shapes
-_fa_q32_k64_h64 = _make_attn_program(Q_ROWS=32, K_SEQ=64, HEAD_DIM=64, seed=10)
-_fa_q32_k96_h64 = _make_attn_program(Q_ROWS=32, K_SEQ=96, HEAD_DIM=64, seed=11)
-_fa_q32_k128_h64 = _make_attn_program(Q_ROWS=32, K_SEQ=128, HEAD_DIM=64, seed=12)
-
-# HEAD_DIM=128 (H=4)
-_fa_q32_k64_h128 = _make_attn_program(Q_ROWS=32, K_SEQ=64, HEAD_DIM=128, seed=20)
-_fa_q32_k96_h128 = _make_attn_program(Q_ROWS=32, K_SEQ=96, HEAD_DIM=128, seed=21)
-
-# HEAD_DIM=256 (H=8) — PI0/PaliGemma-3B
-_fa_q32_k64_h256 = _make_attn_program(Q_ROWS=32, K_SEQ=64, HEAD_DIM=256, seed=30)
-_fa_q32_k128_h256 = _make_attn_program(Q_ROWS=32, K_SEQ=128, HEAD_DIM=256, seed=31)
-
-# Q_ROWS=64 (2 Q-blocks)
-_fa_q64_k64_h64 = _make_attn_program(Q_ROWS=64, K_SEQ=64, HEAD_DIM=64, seed=40)
-_fa_q64_k96_h64 = _make_attn_program(Q_ROWS=64, K_SEQ=96, HEAD_DIM=64, seed=41)
-
-# Q_ROWS=64, HEAD_DIM=128 — multi-Q-block with larger HEAD_DIM, within cycle budget
-# (Q64+H256 exceeds 100k default cycles due to 16KB DMA transfers per tile)
-_fa_q64_k64_h128 = _make_attn_program(Q_ROWS=64, K_SEQ=64, HEAD_DIM=128, seed=50)
+_fa_q32_k64  = _make_attn_program(Q_ROWS=32, K_SEQ=64,  seed=10)
+_fa_q32_k96  = _make_attn_program(Q_ROWS=32, K_SEQ=96,  seed=11)
+_fa_q32_k128 = _make_attn_program(Q_ROWS=32, K_SEQ=128, seed=12)
+_fa_q64_k64  = _make_attn_program(Q_ROWS=64, K_SEQ=64,  seed=40)
+_fa_q64_k96  = _make_attn_program(Q_ROWS=64, K_SEQ=96,  seed=41)
 
 
-class ParameterizedFusedAttentionQ32K64H64Program(Program):
-    """Flash attention: Q_ROWS=32, K_SEQ=64, HEAD_DIM=64 (SmolVLA shape)."""
+class ParameterizedFusedAttentionQ32K64Program(Program):
+    """Flash attention: Q_ROWS=32, K_SEQ=64, HEAD_DIM=64."""
 
-    instructions: List[Instruction[Any]] = _fa_q32_k64_h64[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k64_h64[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k64_h64[2]
+    instructions: List[Instruction[Any]] = _fa_q32_k64[0]
+    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k64[1]
+    golden_result: tuple[int, torch.Tensor] = _fa_q32_k64[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
 
 
-class ParameterizedFusedAttentionQ32K96H64Program(Program):
+class ParameterizedFusedAttentionQ32K96Program(Program):
     """Flash attention: Q_ROWS=32, K_SEQ=96, HEAD_DIM=64 (3 K-tiles)."""
 
-    instructions: List[Instruction[Any]] = _fa_q32_k96_h64[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k96_h64[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k96_h64[2]
+    instructions: List[Instruction[Any]] = _fa_q32_k96[0]
+    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k96[1]
+    golden_result: tuple[int, torch.Tensor] = _fa_q32_k96[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
 
 
-class ParameterizedFusedAttentionQ32K128H64Program(Program):
+class ParameterizedFusedAttentionQ32K128Program(Program):
     """Flash attention: Q_ROWS=32, K_SEQ=128, HEAD_DIM=64 (4 K-tiles)."""
 
-    instructions: List[Instruction[Any]] = _fa_q32_k128_h64[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k128_h64[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k128_h64[2]
+    instructions: List[Instruction[Any]] = _fa_q32_k128[0]
+    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k128[1]
+    golden_result: tuple[int, torch.Tensor] = _fa_q32_k128[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
 
 
-class ParameterizedFusedAttentionQ32K64H128Program(Program):
-    """Flash attention: Q_ROWS=32, K_SEQ=64, HEAD_DIM=128 (H=4)."""
-
-    instructions: List[Instruction[Any]] = _fa_q32_k64_h128[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k64_h128[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k64_h128[2]
-    kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
-
-
-class ParameterizedFusedAttentionQ32K96H128Program(Program):
-    """Flash attention: Q_ROWS=32, K_SEQ=96, HEAD_DIM=128 (H=4, 3 K-tiles)."""
-
-    instructions: List[Instruction[Any]] = _fa_q32_k96_h128[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k96_h128[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k96_h128[2]
-    kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
-
-
-class ParameterizedFusedAttentionQ32K64H256Program(Program):
-    """Flash attention: Q_ROWS=32, K_SEQ=64, HEAD_DIM=256 (H=8, PI0/PaliGemma)."""
-
-    instructions: List[Instruction[Any]] = _fa_q32_k64_h256[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k64_h256[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k64_h256[2]
-    kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
-
-
-class ParameterizedFusedAttentionQ32K128H256Program(Program):
-    """Flash attention: Q_ROWS=32, K_SEQ=128, HEAD_DIM=256 (H=8, 4 K-tiles)."""
-
-    instructions: List[Instruction[Any]] = _fa_q32_k128_h256[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k128_h256[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q32_k128_h256[2]
-    kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
-    kernel_max_cycles: int = 300000  # H=8 with 4 K-tiles exceeds 100k default
-
-
-class ParameterizedFusedAttentionQ64K64H64Program(Program):
+class ParameterizedFusedAttentionQ64K64Program(Program):
     """Flash attention: Q_ROWS=64, K_SEQ=64, HEAD_DIM=64 (2 Q-blocks)."""
 
-    instructions: List[Instruction[Any]] = _fa_q64_k64_h64[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k64_h64[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q64_k64_h64[2]
+    instructions: List[Instruction[Any]] = _fa_q64_k64[0]
+    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k64[1]
+    golden_result: tuple[int, torch.Tensor] = _fa_q64_k64[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
 
 
-class ParameterizedFusedAttentionQ64K96H64Program(Program):
+class ParameterizedFusedAttentionQ64K96Program(Program):
     """Flash attention: Q_ROWS=64, K_SEQ=96, HEAD_DIM=64 (2 Q-blocks, 3 K-tiles)."""
 
-    instructions: List[Instruction[Any]] = _fa_q64_k96_h64[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k96_h64[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q64_k96_h64[2]
-    kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
-
-
-class ParameterizedFusedAttentionQ64K64H128Program(Program):
-    """Flash attention: Q_ROWS=64, K_SEQ=64, HEAD_DIM=128 (2 Q-blocks, H=4)."""
-
-    instructions: List[Instruction[Any]] = _fa_q64_k64_h128[0]
-    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k64_h128[1]
-    golden_result: tuple[int, torch.Tensor] = _fa_q64_k64_h128[2]
+    instructions: List[Instruction[Any]] = _fa_q64_k96[0]
+    memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k96[1]
+    golden_result: tuple[int, torch.Tensor] = _fa_q64_k96[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
