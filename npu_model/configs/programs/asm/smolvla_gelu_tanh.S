@@ -83,9 +83,9 @@ vload m6, 0(x4)             # m6 = 0.5
 delay 34
 vload m7, 32(x4)            # m7 = 0.5 (pair)
 delay 34
-vli.all m8, 1               # m8 = 1.0
+vli.all m8, 0x3f80               # m8 = 1.0
 delay 65
-vli.all m9, 1               # m9 = 1.0 (pair)
+vli.all m9, 0x3f80               # m9 = 1.0 (pair)
 delay 65
 
 # --- GELU compute (pair semantics over m0..m7) ---

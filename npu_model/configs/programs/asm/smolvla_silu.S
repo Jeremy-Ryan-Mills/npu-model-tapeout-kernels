@@ -35,13 +35,13 @@ vload m1, 32(x1)            # x h1
 delay 34
 
 # --- Broadcast constants ---
-vli.all m2, -1              # -1.0 h0
+vli.all m2, 0xbf80              # -1.0 h0
 delay 65
-vli.all m3, -1              # -1.0 h1
+vli.all m3, 0xbf80              # -1.0 h1
 delay 65
-vli.all m4, 1               # +1.0 h0
+vli.all m4, 0x3f80          # +1.0 h0
 delay 65
-vli.all m5, 1               # +1.0 h1
+vli.all m5, 0x3f80          # +1.0 h1
 delay 65
 
 # --- SiLU: x / (1 + exp(-x)) ---

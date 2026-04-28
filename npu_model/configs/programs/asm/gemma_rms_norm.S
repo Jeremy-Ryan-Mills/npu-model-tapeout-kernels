@@ -35,19 +35,19 @@ delay 34
 vload m2, 0(x2)     # eps low
 delay 34
 vload m3, 32(x2)    # eps high
-delay 16
+delay 34
 
 # --- RMS Norm Compute ---
 # x_sq = x * x
-vmul.bf16 m4, m0, m0
+vsquare.bf16 m4, m0
 delay 66
 # sum_sq over columns, broadcast back across each row
 vredsum.row.bf16 m6, m4
 delay 39
 # mean_sq = sum_sq * (1/ROW_SIZE)
-vli.all m8, 32
+vli.all m8, 0x4200
 delay 65
-vli.all m9, 32
+vli.all m9, 0x4200
 delay 65
 vrecip.bf16 m10, m8
 delay 66
