@@ -58,9 +58,9 @@ vload m8, 0(x4)
 delay 34
 vload m9, 32(x4)
 delay 34
-vli.all m10, 1
+vli.all m10,  0x3F80
 delay 65
-vli.all m11, 1
+vli.all m11,  0x3F80
 delay 65
 loop_1:
 add x17, x12, x6

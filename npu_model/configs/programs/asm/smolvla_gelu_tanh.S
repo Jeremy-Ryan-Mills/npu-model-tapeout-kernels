@@ -32,9 +32,9 @@ vmul.bf16 m10, m0, m0
 delay 66
 vmul.bf16 m12, m10, m0
 delay 66
-vli.all m8, 1
+vli.all m8,  0x3F80
 delay 65
-vli.all m9, 1
+vli.all m9,  0x3F80
 delay 65
 dma.wait.ch2
 vload m2, 0(x2)

@@ -5,7 +5,17 @@ from typing import TYPE_CHECKING
 from .exu import ExecutionUnit
 from ..logging.logger import Logger, LaneType
 from ..isa import IsaSpec, is_scalar_itype, RType, SBType, UJType
-from ..configs.isa_definition import DELAY, DMA_WAIT_CH0,DMA_WAIT_CH1,DMA_WAIT_CH2,DMA_WAIT_CH3,DMA_WAIT_CH4,DMA_WAIT_CH5,DMA_WAIT_CH6,DMA_WAIT_CH7
+from ..configs.isa_definition import (
+    DELAY,
+    DMA_WAIT_CH0,
+    DMA_WAIT_CH1,
+    DMA_WAIT_CH2,
+    DMA_WAIT_CH3,
+    DMA_WAIT_CH4,
+    DMA_WAIT_CH5,
+    DMA_WAIT_CH6,
+    DMA_WAIT_CH7,
+)
 from ..isa_types import EXU
 from ..hardware.arch_state import ArchState
 from .exu import *  # noqa: F401, F403
@@ -86,14 +96,12 @@ class InstructionDecode(Module):
             if uop is None:
                 return
 
-
             if self._is_control_flow_delay_slot_violation(uop):
                 raise RuntimeError(
                     f"Illegal control-flow instruction '{uop.insn.mnemonic}' decoded "
                     f"in a delay-slot position on cycle {self.cycle}"
                 )
             self._consume_delay_slot_if_needed()
-
 
             self.logger.log_stage_end(
                 uop.id, "F", lane=LaneType.IFU.value, cycle=self.cycle
@@ -103,10 +111,7 @@ class InstructionDecode(Module):
             )
 
             # Tag instruction with dispatch delay.
-            if (
-                uop.dispatch_delay == 0 and 
-                isinstance(uop.insn, DELAY)
-            ):
+            if uop.dispatch_delay == 0 and isinstance(uop.insn, DELAY):
                 uop.dispatch_delay = uop.insn.imm
 
             if self._is_control_flow_instruction(uop):
@@ -126,7 +131,7 @@ class InstructionDecode(Module):
     def is_stalled(self) -> bool:
         """Check if DIU is currently stalled."""
         return self._stalled
-    
+
     def force_unstall(self) -> None:
         self._stalled = False
 
@@ -136,14 +141,14 @@ class InstructionDecode(Module):
         # Prepare empty outputs for this cycle
 
         if (
-            isinstance(self.uop.insn,DMA_WAIT_CH0) or
-            isinstance(self.uop.insn,DMA_WAIT_CH1) or
-            isinstance(self.uop.insn,DMA_WAIT_CH2) or
-            isinstance(self.uop.insn,DMA_WAIT_CH3) or
-            isinstance(self.uop.insn,DMA_WAIT_CH4) or
-            isinstance(self.uop.insn,DMA_WAIT_CH5) or
-            isinstance(self.uop.insn,DMA_WAIT_CH6) or
-            isinstance(self.uop.insn,DMA_WAIT_CH7)
+            isinstance(self.uop.insn, DMA_WAIT_CH0)
+            or isinstance(self.uop.insn, DMA_WAIT_CH1)
+            or isinstance(self.uop.insn, DMA_WAIT_CH2)
+            or isinstance(self.uop.insn, DMA_WAIT_CH3)
+            or isinstance(self.uop.insn, DMA_WAIT_CH4)
+            or isinstance(self.uop.insn, DMA_WAIT_CH5)
+            or isinstance(self.uop.insn, DMA_WAIT_CH6)
+            or isinstance(self.uop.insn, DMA_WAIT_CH7)
         ):
             self.logger.log_stage_end(
                 self.uop.id, "D", lane=LaneType.DIU.value, cycle=self.cycle + 1
@@ -156,8 +161,7 @@ class InstructionDecode(Module):
 
         # if we dispatched a DMA instruction, set flag as busy here
         if self.uop.insn.exu == EXU.DMA and (
-            is_scalar_itype(self.uop.insn) or 
-            isinstance(self.uop.insn, RType)
+            is_scalar_itype(self.uop.insn) or isinstance(self.uop.insn, RType)
         ):
             assert not self.arch_state.check_flag(
                 self.uop.insn.funct3
@@ -184,14 +188,14 @@ class InstructionDecode(Module):
 
     def check_backpressure(self, uop: Uop) -> bool:
         if (
-            isinstance(uop.insn,DMA_WAIT_CH0) or
-            isinstance(uop.insn,DMA_WAIT_CH1) or
-            isinstance(uop.insn,DMA_WAIT_CH2) or
-            isinstance(uop.insn,DMA_WAIT_CH3) or
-            isinstance(uop.insn,DMA_WAIT_CH4) or
-            isinstance(uop.insn,DMA_WAIT_CH5) or
-            isinstance(uop.insn,DMA_WAIT_CH6) or
-            isinstance(uop.insn,DMA_WAIT_CH7)
+            isinstance(uop.insn, DMA_WAIT_CH0)
+            or isinstance(uop.insn, DMA_WAIT_CH1)
+            or isinstance(uop.insn, DMA_WAIT_CH2)
+            or isinstance(uop.insn, DMA_WAIT_CH3)
+            or isinstance(uop.insn, DMA_WAIT_CH4)
+            or isinstance(uop.insn, DMA_WAIT_CH5)
+            or isinstance(uop.insn, DMA_WAIT_CH6)
+            or isinstance(uop.insn, DMA_WAIT_CH7)
         ):
             if self.arch_state.check_flag(uop.insn.funct3):
                 self._stalled = True
@@ -203,7 +207,9 @@ class InstructionDecode(Module):
         if self.outputs[target_exu].should_stall():
             # Don't end D stage - keep it active to show instruction is waiting
             # The D stage will end when we actually dispatch
-            raise RuntimeError(f"Backpressure detected in IDU when running uop {uop.id} ({str(uop.insn)}) on cycle {self.cycle}")
+            raise RuntimeError(
+                f"Backpressure detected in IDU when running uop {uop.id} {str(uop.insn)} on cycle {self.cycle}"
+            )
 
         # Backpressure cleared - if we were stalled, the D stage continues:
         self._stalled = False

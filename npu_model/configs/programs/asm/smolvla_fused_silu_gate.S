@@ -8,13 +8,13 @@ addi x5, x5, -2048
 dma.config.ch0 x0
 dma.wait.ch0
 dma.load.ch0 x1, x3, x5
-vli.all m2, -1
+vli.all m2,  0xBF80
 delay 65
-vli.all m3, -1
+vli.all m3,  0xBF80
 delay 65
-vli.all m4, 1
+vli.all m4,  0x3F80
 delay 65
-vli.all m5, 1
+vli.all m5,  0x3F80
 delay 65
 dma.wait.ch0
 vload m0, 0(x1)

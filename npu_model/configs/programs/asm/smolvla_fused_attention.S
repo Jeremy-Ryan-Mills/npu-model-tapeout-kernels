@@ -42,9 +42,9 @@ vload m6, 0(x6)
 delay 34
 vload m7, 0(x6)
 delay 34
-vli.all m8, -100
+vli.all m8,  0xC2C8
 delay 65
-vli.all m9, -100
+vli.all m9,  0xC2C8
 delay 65
 vli.all m10, 0
 delay 65

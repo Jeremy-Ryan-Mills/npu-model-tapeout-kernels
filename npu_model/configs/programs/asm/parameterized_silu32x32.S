@@ -10,13 +10,13 @@ addi x6, x0, 0
 addi x7, x0, 1
 dma.config.ch0 x0
 dma.wait.ch0
-vli.all m2, -1
+vli.all m2,  0xBF80
 delay 65
-vli.all m3, -1
+vli.all m3,  0xBF80
 delay 65
-vli.all m4, 1
+vli.all m4,  0x3F80
 delay 65
-vli.all m5, 1
+vli.all m5,  0x3F80
 delay 65
 loop_1:
 dma.load.ch0 x1, x4, x3

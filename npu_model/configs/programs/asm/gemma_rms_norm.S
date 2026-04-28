@@ -45,9 +45,9 @@ delay 66
 vredsum.row.bf16 m6, m4
 delay 39
 # mean_sq = sum_sq * (1/ROW_SIZE)
-vli.all m8, 32
+vli.all m8,  0x4200
 delay 65
-vli.all m9, 32
+vli.all m9,  0x4200
 delay 65
 vrecip.bf16 m10, m8
 delay 66

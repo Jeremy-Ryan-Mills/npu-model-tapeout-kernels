@@ -43,9 +43,9 @@ vload m13, 96(x1)
 delay 34
 vpack.bf16.fp8 m1, m12, e0
 delay 66
-vli.all m4, -100
+vli.all m4,  0xC2C8
 delay 65
-vli.all m5, -100
+vli.all m5,  0xC2C8
 delay 65
 vli.all m6, 0
 delay 65
