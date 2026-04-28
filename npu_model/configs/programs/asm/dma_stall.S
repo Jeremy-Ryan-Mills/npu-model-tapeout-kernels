@@ -42,7 +42,7 @@ vmatmul.mxu0 acc0, m1, w0
 delay 96 # TODO - verify delays
 # FIXME: I'm like, not at all sure how erf is supposed to work with exponent register
 # the temp fix is to just assume that we need to set it to 1 manually.
-seli e0, 1
+seli e0, 1 
 vmatpop.fp8.acc.mxu0 m0, acc0, e0
 # delay 32
 # Wait to finish unnecessary loads

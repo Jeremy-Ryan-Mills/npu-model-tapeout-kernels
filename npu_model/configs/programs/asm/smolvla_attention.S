@@ -1,14 +1,11 @@
 lui x1, 0x2
 addi x2, x1, 1024
 addi x3, x2, 1024
-addi x4, x3, 1024
-lui x5, 0x3
 lui x6, 0x4
 addi x7, x6, 1024
 addi x8, x0, 0
 addi x9, x8, 1024
 addi x10, x9, 1024
-addi x11, x10, 1024
 lui x12, 0x1
 addi x13, x12, 1024
 addi x14, x0, 1024
@@ -16,24 +13,19 @@ dma.config.ch0 x0
 dma.wait.ch0
 dma.load.ch0 x1, x8, x14
 dma.load.ch1 x2, x9, x14
+vli.all m6, 0x3E35
+delay 65
+vli.all m7, 0x3E35
+delay 65
 dma.wait.ch0
 dma.wait.ch1
 dma.load.ch0 x3, x10, x14
-dma.load.ch1 x4, x11, x14
-dma.wait.ch0
-dma.wait.ch1
-addi x15, x11, 1024
-dma.load.ch0 x5, x15, x14
 dma.wait.ch0
 vload m0, 0(x1)
 delay 34
 vload m2, 0(x2)
 delay 34
 vload m4, 0(x3)
-delay 34
-vload m6, 0(x4)
-delay 34
-vload m7, 0(x5)
 delay 34
 vmatpush.weight.mxu0 w0, m2
 delay 32

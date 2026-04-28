@@ -23,15 +23,15 @@ vload m0, 0(x1)
 delay 34
 vload m2, 0(x2)
 delay 34
-vmatpush.weight.mxu0 w0, m2
+vmatpush.weight.mxu1 w0, m2
 delay 32
-vmatmul.mxu0 acc0, m0, w0
+vmatmul.mxu1 acc0, m0, w0
 dma.wait.ch2
 vload m4, 0(x3)
 delay 34
 vload m5, 32(x3)
 delay 34
-vmatpop.bf16.acc.mxu0 m6, acc0
+vmatpop.bf16.acc.mxu1 m6, acc0
 delay 32
 vadd.bf16 m8, m6, m4
 delay 66
