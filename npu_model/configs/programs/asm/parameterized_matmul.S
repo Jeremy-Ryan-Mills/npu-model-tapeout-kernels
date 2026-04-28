@@ -20,8 +20,10 @@ lui x13, 0x1
 lui x14, 0x2
 addi x15, x0, 0
 addi x20, x0, 0
-dma.config.ch0
-dma.config.ch1
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
 dma.wait.ch0
 dma.wait.ch1
 loop_3:

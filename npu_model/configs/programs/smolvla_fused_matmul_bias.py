@@ -26,13 +26,10 @@ This Program exercises one 32x32 sub-block.
 """
 
 import os
-
-from typing import Any, List, Tuple
-
 import torch
-
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs
+from npu_model.util.converter import load_asm
+from npu_model.software.instruction import Instruction
+from npu_model.software.program import Program, ASM_FOLDER
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -169,85 +166,11 @@ BF16_BYTES = 2048
 
 
 class SmolVLAFusedMatmulBiasProgram(Program):
-    """fused_matmul_bias: (A_fp8 @ B_fp8)_bf16 + bias_bf16. cycles: ~430 (mxu0-bound)"""
+    """fused_matmul_bias: (A_fp8 @ B_fp8)_bf16 + bias_bf16."""
 
-    instructions: List[Instruction[Any]] = [
-        # Scalar setup — VMEM addresses
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=1, imm=0x2)),  # 0x2000 A
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=2, imm=0x2)),  # 0x2000
-        Instruction(
-            mnemonic="addi", args=ScalarArgs(rd=2, rs1=2, imm=1024)
-        ),  # 0x2400 B
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=3, imm=0x3)),  # 0x3000 bias
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=3, rs1=3, imm=-2048)),  # 0x2800
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=4, imm=0x3)),  # 0x3000 out
-        # DRAM addresses
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=5, rs1=0, imm=DRAM_A)),  # 0
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=6, rs1=0, imm=1024)),  # DRAM_B
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=7, imm=0x1)),
-        Instruction(
-            mnemonic="addi", args=ScalarArgs(rd=7, rs1=7, imm=-2048)
-        ),  # DRAM_BIAS 0x0800
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=8, imm=0x1)),  # DRAM_OUT 0x1000
-        # Transfer sizes
-        Instruction(
-            mnemonic="addi", args=ScalarArgs(rd=9, rs1=0, imm=1024)
-        ),  # fp8 tile
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=10, imm=0x1)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=10, rs1=10, imm=-2048)),  # 2048
-        # DMA A, B, bias in one parallel round (A+B are 1024B each, bias is 2048B)
-        Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, channel=0)),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-        Instruction(
-            mnemonic="dma.load.ch<N>", args=DmaArgs(rd=1, rs1=5, rs2=9, channel=0)
-        ),  # A
-        Instruction(
-            mnemonic="dma.load.ch<N>", args=DmaArgs(rd=2, rs1=6, rs2=9, channel=1)
-        ),  # B
-        Instruction(
-            mnemonic="dma.load.ch<N>", args=DmaArgs(rd=3, rs1=7, rs2=10, channel=2)
-        ),  # bias
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),  # A ready (~516cy)
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=1)),  # B ready (~516cy)
-        # A and B are ready. Bias (ch2, 2048B) takes ~1028cy — still loading.
-        # Run the matmul now; dma.wait ch2 will overlap with MXU0 executing.
-        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=2, rs1=2, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(
-            mnemonic="vmatpush.weight.mxu0", args=MatrixArgs(vd=0, vs1=2)
-        ),  # B → WB[0]
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=32)),
-        Instruction(
-            mnemonic="vmatmul.mxu0", args=MatrixArgs(vd=0, vs1=0, vs2=0)
-        ),  # acc[0] = A @ WB[0], 96cy non-blocking
-        # Wait for bias DMA while MXU0 is computing — ~512cy bias remaining, 96cy matmul.
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=2)),  # bias ready
-        Instruction(mnemonic="vload", args=VectorArgs(vd=4, rs1=3, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=5, rs1=3, imm12=32)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        # Matmul done long before the bias loads above finished (96cy << ~512cy wait).
-        Instruction(
-            mnemonic="vmatpop.bf16.acc.mxu0", args=MatrixArgs(vd=6, vs1=0)
-        ),  # (m6, m7) = C bf16
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=32)),
-        # op_b: pair-op bias add → (m8, m9)
-        Instruction(mnemonic="vadd.bf16", args=VectorArgs(vd=8, vs1=6, vs2=4)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=66)),
-        # Store output pair
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=8, rs1=4, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=9, rs1=4, imm12=32)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(
-            mnemonic="dma.store.ch<N>", args=DmaArgs(rd=8, rs1=4, rs2=10, channel=0)
-        ),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-    ]
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'smolvla_fused_matmul_bias.S')
 
-    memory_regions: List[Tuple[int, torch.Tensor]] = [
+    memory_regions: list[tuple[int, torch.Tensor]] = [
         (DRAM_A, INPUT_A),
         (DRAM_B, INPUT_B),
         (DRAM_BIAS, BIAS_STACKED),

@@ -23,8 +23,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 VMEM_A = 0x2000
 VMEM_B = 0x2400
@@ -332,7 +333,7 @@ _2x32_insns, _2x32_regions, _2x32_golden = _make_program(2, 32, 32, 32, seed=300
 class ParameterizedBatchMatmul2x32x32x32Program(Program):
     """Batch matmul (B=2, M=K=N=32): 2 independent 32×32×32 fp8 matmuls."""
 
-    instructions: List[Instruction[Any]] = _2x32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_batch_matmul2x32x32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _2x32_regions
     golden_result: tuple[int, torch.Tensor] = _2x32_golden
 
@@ -345,7 +346,7 @@ _4x32_insns, _4x32_regions, _4x32_golden = _make_program(4, 32, 64, 32, seed=301
 class ParameterizedBatchMatmul4x32x64x32Program(Program):
     """Batch matmul (B=4, M=32, K=64, N=32): 4 batches, K-accumulation path."""
 
-    instructions: List[Instruction[Any]] = _4x32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_batch_matmul4x32x64x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _4x32_regions
     golden_result: tuple[int, torch.Tensor] = _4x32_golden
 
@@ -358,6 +359,6 @@ _2x64_insns, _2x64_regions, _2x64_golden = _make_program(2, 64, 32, 64, seed=302
 class ParameterizedBatchMatmul2x64x32x64Program(Program):
     """Batch matmul (B=2, M=64, K=32, N=64): 2 batches, multi-tile output."""
 
-    instructions: List[Instruction[Any]] = _2x64_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_batch_matmul2x64x32x64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _2x64_regions
     golden_result: tuple[int, torch.Tensor] = _2x64_golden

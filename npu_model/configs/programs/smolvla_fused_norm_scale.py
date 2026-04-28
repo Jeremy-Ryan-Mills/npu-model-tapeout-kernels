@@ -21,14 +21,10 @@ to the matrix shape on the host side.
 """
 
 import os
-
-from typing import Any, List, Tuple
-
 import torch
-
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
-
+from npu_model.util.converter import load_asm
+from npu_model.software.instruction import Instruction
+from npu_model.software.program import Program, ASM_FOLDER
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 1. MLIR definition (f32 so IREE llvm-cpu can lower it).
@@ -151,60 +147,11 @@ TILE_BYTES = 2048
 
 
 class SmolVLAFusedNormScaleProgram(Program):
-    """fused_norm_scale: out[i,j] = matrix[i,j] * rsqrt(variance[i,j]).
+    """fused_norm_scale: out[i,j] = matrix[i,j] * rsqrt(variance[i,j])."""
 
-    Optimization: after var DMA completes (ch0, ~1028cy), load and process variance
-    (vsqrt + vrecip, ~200cy) while the matrix DMA (ch1, ~1028cy) is still in flight.
-    This hides ~200cy of VPU compute behind the sequential DMA engine.
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'smolvla_fused_norm_scale.S')
 
-    cycles: ~3312
-    """
-
-    instructions: List[Instruction[Any]] = [
-        # Scalar setup
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=1, imm=0x2)),  # VMEM_VAR = 0x2000
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=2, imm=0x3)),  # VMEM_MAT = 0x3000
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=3, imm=0x4)),  # VMEM_OUT = 0x4000
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=4, rs1=0, imm=DRAM_VAR_BASE)),
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=5, imm=0x1)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=5, rs1=5, imm=-2048)),  # DRAM_MAT = 0x0800
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=6, imm=0x1)),            # DRAM_OUT = 0x1000
-        Instruction(mnemonic="lui", args=ScalarArgs(rd=7, imm=0x1)),
-        Instruction(mnemonic="addi", args=ScalarArgs(rd=7, rs1=7, imm=-2048)),  # transfer size = 2048
-        # Issue var (ch0) and mat (ch1) DMA loads. With a sequential DMA engine,
-        # ch1 starts after ch0 finishes (~1028cy), completing at ~2056cy total.
-        Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, channel=0)),
-        Instruction(mnemonic="dma.config.ch<N>", args=DmaArgs(rs1=0, channel=1)),
-        Instruction(mnemonic="dma.load.ch<N>", args=DmaArgs(rd=1, rs1=4, rs2=7, channel=0)),
-        Instruction(mnemonic="dma.load.ch<N>", args=DmaArgs(rd=2, rs1=5, rs2=7, channel=1)),
-        # Wait for var, then compute rsqrt(var) while matrix DMA is still in flight.
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=0, rs1=1, imm12=0)),   # m0 = var low
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=1, rs1=1, imm12=32)),  # m1 = var high
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vsqrt.bf16", args=VectorArgs(vd=4, vs1=0)),       # m4/m5 = sqrt(var)
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=66)),
-        Instruction(mnemonic="vrecip.bf16", args=VectorArgs(vd=6, vs1=4)),      # m6/m7 = rsqrt(var)
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=66)),
-        # Matrix DMA finishes ~2056cy from start; by now ~200cy of that window is used.
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=1)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=2, rs1=2, imm12=0)),   # m2 = mat low
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vload", args=VectorArgs(vd=3, rs1=2, imm12=32)),  # m3 = mat high
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vmul.bf16", args=VectorArgs(vd=8, vs1=2, vs2=6)), # m8/m9 = mat * rsqrt
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=66)),
-        # Store output
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=8, rs1=3, imm12=0)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="vstore", args=VectorArgs(vd=9, rs1=3, imm12=32)),
-        Instruction(mnemonic="delay", args=ScalarArgs(imm=34)),
-        Instruction(mnemonic="dma.store.ch<N>", args=DmaArgs(rd=6, rs1=3, rs2=7, channel=0)),
-        Instruction(mnemonic="dma.wait.ch<N>", args=DmaArgs(channel=0)),
-    ]
-
-    memory_regions: List[Tuple[int, torch.Tensor]] = [
+    memory_regions: list[tuple[int, torch.Tensor]] = [
         (DRAM_VAR_BASE, VARIANCE),
         (DRAM_MAT_BASE, MATRIX),
     ]

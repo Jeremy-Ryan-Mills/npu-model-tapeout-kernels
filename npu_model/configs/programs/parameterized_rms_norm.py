@@ -30,8 +30,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 TILE = 32
 BF16_BYTES = 2
@@ -248,7 +249,7 @@ _32_insns, _32_regions, _32_golden = _make_program(32, seed=90)
 class ParameterizedRmsNorm32x32Program(Program):
     """RMS-norm on a single 32x32 bf16 tile."""
 
-    instructions: List[Instruction[Any]] = _32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_rms_norm32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _32_regions
     golden_result: tuple[int, torch.Tensor] = _32_golden
 
@@ -259,7 +260,7 @@ _64_insns, _64_regions, _64_golden = _make_program(64, seed=91)
 class ParameterizedRmsNorm64x32Program(Program):
     """RMS-norm on a 64x32 bf16 tensor (2 groups)."""
 
-    instructions: List[Instruction[Any]] = _64_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_rms_norm64x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _64_regions
     golden_result: tuple[int, torch.Tensor] = _64_golden
 
@@ -270,6 +271,6 @@ _96_insns, _96_regions, _96_golden = _make_program(96, seed=92)
 class ParameterizedRmsNorm96x32Program(Program):
     """RMS-norm on a 96x32 bf16 tensor (3 groups)."""
 
-    instructions: List[Instruction[Any]] = _96_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_rms_norm96x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _96_regions
     golden_result: tuple[int, torch.Tensor] = _96_golden

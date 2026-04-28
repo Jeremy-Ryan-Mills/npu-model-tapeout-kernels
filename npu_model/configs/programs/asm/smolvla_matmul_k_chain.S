@@ -11,7 +11,7 @@ addi x10, x9, 1024
 addi x11, x10, 1024
 addi x12, x0, 1024
 addi x13, x12, 1024
-dma.config.ch0
+dma.config.ch0 x0
 dma.wait.ch0
 dma.load.ch0 x6, x1, x12
 dma.load.ch1 x8, x3, x12

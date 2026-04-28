@@ -23,8 +23,10 @@ addi x14, x0, 0
 addi x15, x0, 3
 lui x16, 0x1
 addi x16, x16, -2048
-dma.config.ch0
-dma.config.ch1
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
 dma.wait.ch0
 dma.wait.ch1
 lui x17, 0x2
@@ -81,7 +83,7 @@ vadd.bf16 m12, m0, m12
 delay 66
 vmul.bf16 m12, m12, m6
 delay 66
-vtanh.bf16 m12, m12, m0
+vtanh.bf16 m12, m12
 delay 66
 vadd.bf16 m12, m10, m12
 delay 66

@@ -13,10 +13,14 @@ addi x11, x1, 1024
 addi x12, x2, 1024
 addi x14, x3, 1024
 addi x15, x4, 1024
-dma.config.ch0
-dma.config.ch1
-dma.config.ch2
-dma.config.ch3
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
+dma.config.ch2 x0
+dma.wait.ch2
+dma.config.ch3 x0
+dma.wait.ch3
 dma.load.ch0 x1, x5, x13
 dma.load.ch1 x11, x6, x13
 dma.load.ch2 x2, x7, x13

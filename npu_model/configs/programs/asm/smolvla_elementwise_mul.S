@@ -6,7 +6,7 @@ lui x5, 0x1
 lui x6, 0x2
 lui x7, 0x1
 addi x7, x7, -2048
-dma.config.ch0
+dma.config.ch0 x0
 dma.wait.ch0
 dma.load.ch0 x1, x4, x7
 dma.load.ch1 x2, x5, x7

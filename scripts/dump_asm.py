@@ -81,7 +81,9 @@ def _fmt_instr(mnemonic: str, args, labels: dict[int, str], idx: int) -> str:
         return f"{ch} m{args.vd}, m{args.vs1}, m{args.vs2}"
 
     if isinstance(args, DmaArgs):
-        if "dma.config" in ch or "dma.wait" in ch:
+        if "dma.config" in ch:
+            return f"{ch} x{args.rs1}"
+        if "dma.wait" in ch:
             return ch
         return f"{ch} x{args.rd}, x{args.rs1}, x{args.rs2}"
 

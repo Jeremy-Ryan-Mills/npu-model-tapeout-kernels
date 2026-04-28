@@ -17,8 +17,10 @@ addi x12, x0, 0
 addi x13, x0, 3
 lui x14, 0x1
 addi x14, x14, -2048
-dma.config.ch0
-dma.config.ch1
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
 dma.wait.ch0
 dma.wait.ch1
 lui x15, 0x2

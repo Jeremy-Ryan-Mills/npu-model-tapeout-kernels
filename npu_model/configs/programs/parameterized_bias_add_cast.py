@@ -26,8 +26,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 TILE = 32
 BF16_BYTES = 2
@@ -171,7 +172,7 @@ _insns, _regions, _golden = _make_program(seed=210)
 class ParameterizedBiasAddCast32x32Program(Program):
     """bias_add_cast: fp8(x + bias) on a single 32×32 bf16 tile."""
 
-    instructions: List[Instruction[Any]] = _insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_bias_add_cast32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _regions
     golden_result: tuple[int, torch.Tensor] = _golden
     kernel_tolerance: tuple[float, float] = (1e-1, 1e-1)

@@ -10,9 +10,11 @@ addi x7, x0, 0
 addi x8, x0, 1
 lui x9, 0x1
 addi x9, x9, -2048
-seli x0, x0, 1
-dma.config.ch0
-dma.config.ch1
+seli e0, 1
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
 dma.wait.ch0
 dma.wait.ch1
 loop_1:
@@ -25,7 +27,7 @@ delay 34
 dma.wait.ch1
 vload m1, 0(x2)
 delay 34
-vpack.bf16.fp8 m2, m0, m0
+vpack.bf16.fp8 m2, m0, e0
 delay 66
 vstore m2, 0(x3)
 delay 34

@@ -19,8 +19,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 VMEM_A = 0x2000
 VMEM_B = 0x2800
@@ -166,7 +167,7 @@ _32_insns, _32_regions, _32_golden = _make_program(32, 32, seed=40)
 class ParameterizedElementwiseDiv32x32Program(Program):
     """Elementwise divide on a single 32x32 bf16 tile."""
 
-    instructions: List[Instruction[Any]] = _32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_elementwise_div32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _32_regions
     golden_result: tuple[int, torch.Tensor] = _32_golden
 
@@ -177,7 +178,7 @@ _64_insns, _64_regions, _64_golden = _make_program(64, 64, seed=41)
 class ParameterizedElementwiseDiv64x64Program(Program):
     """Elementwise divide on a 64x64 bf16 tensor (2x2 tiles)."""
 
-    instructions: List[Instruction[Any]] = _64_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_elementwise_div64x64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _64_regions
     golden_result: tuple[int, torch.Tensor] = _64_golden
 
@@ -188,6 +189,6 @@ _64x32_insns, _64x32_regions, _64x32_golden = _make_program(64, 32, seed=42)
 class ParameterizedElementwiseDiv64x32Program(Program):
     """Elementwise divide on a 64x32 bf16 tensor (2x1 tiles)."""
 
-    instructions: List[Instruction[Any]] = _64x32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_elementwise_div64x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _64x32_regions
     golden_result: tuple[int, torch.Tensor] = _64x32_golden

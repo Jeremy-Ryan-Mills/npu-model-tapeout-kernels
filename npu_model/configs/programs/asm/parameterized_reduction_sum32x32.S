@@ -10,8 +10,10 @@ addi x7, x0, 0
 addi x8, x0, 1
 lui x9, 0x1
 addi x9, x9, -2048
-dma.config.ch0
-dma.config.ch1
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
 dma.wait.ch0
 dma.wait.ch1
 loop_1:

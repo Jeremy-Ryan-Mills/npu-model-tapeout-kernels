@@ -23,8 +23,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 TILE = 32
 BF16_BYTES = 2
@@ -173,7 +174,7 @@ _32_insns, _32_regions, _32_golden = _make_program(32, 32, seed=80)
 class ParameterizedFusedNormScale32x32Program(Program):
     """fused_norm_scale on a single 32x32 bf16 tile."""
 
-    instructions: List[Instruction[Any]] = _32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_norm_scale32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _32_regions
     golden_result: tuple[int, torch.Tensor] = _32_golden
 
@@ -184,7 +185,7 @@ _64_insns, _64_regions, _64_golden = _make_program(64, 64, seed=81)
 class ParameterizedFusedNormScale64x64Program(Program):
     """fused_norm_scale on a 64x64 bf16 tensor (2x2 tiles)."""
 
-    instructions: List[Instruction[Any]] = _64_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_norm_scale64x64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _64_regions
     golden_result: tuple[int, torch.Tensor] = _64_golden
 
@@ -195,6 +196,6 @@ _64x32_insns, _64x32_regions, _64x32_golden = _make_program(64, 32, seed=82)
 class ParameterizedFusedNormScale64x32Program(Program):
     """fused_norm_scale on a 64x32 bf16 tensor (2x1 tiles)."""
 
-    instructions: List[Instruction[Any]] = _64x32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_norm_scale64x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _64x32_regions
     golden_result: tuple[int, torch.Tensor] = _64x32_golden

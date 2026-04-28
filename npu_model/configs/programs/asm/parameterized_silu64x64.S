@@ -7,7 +7,7 @@ addi x4, x0, 0
 lui x5, 0x2
 addi x6, x0, 0
 addi x7, x0, 4
-dma.config.ch0
+dma.config.ch0 x0
 dma.wait.ch0
 vli.all m2, -1
 delay 65

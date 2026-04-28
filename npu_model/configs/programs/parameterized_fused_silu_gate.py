@@ -21,8 +21,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 TILE = 32
 BF16_BYTES = 2
@@ -161,7 +162,7 @@ _32_insns, _32_regions, _32_golden = _make_program(32, 32, seed=60)
 class ParameterizedFusedSiluGate32x32Program(Program):
     """fused_silu_gate on a single 32x32 bf16 tile."""
 
-    instructions: List[Instruction[Any]] = _32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_silu_gate32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _32_regions
     golden_result: tuple[int, torch.Tensor] = _32_golden
 
@@ -172,7 +173,7 @@ _64_insns, _64_regions, _64_golden = _make_program(64, 64, seed=61)
 class ParameterizedFusedSiluGate64x64Program(Program):
     """fused_silu_gate on a 64x64 bf16 tensor (2x2 tiles)."""
 
-    instructions: List[Instruction[Any]] = _64_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_silu_gate64x64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _64_regions
     golden_result: tuple[int, torch.Tensor] = _64_golden
 
@@ -183,6 +184,6 @@ _32x64_insns, _32x64_regions, _32x64_golden = _make_program(32, 64, seed=62)
 class ParameterizedFusedSiluGate32x64Program(Program):
     """fused_silu_gate on a 32x64 bf16 tensor (1x2 tiles)."""
 
-    instructions: List[Instruction[Any]] = _32x64_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_silu_gate32x64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _32x64_regions
     golden_result: tuple[int, torch.Tensor] = _32x64_golden

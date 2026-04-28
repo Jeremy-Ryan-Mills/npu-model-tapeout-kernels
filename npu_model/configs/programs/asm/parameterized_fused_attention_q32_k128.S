@@ -1,3 +1,4 @@
+seli e0, 1
 addi x1, x0, 0
 lui x2, 0x1
 lui x3, 0x2
@@ -15,8 +16,10 @@ lui x14, 0x5
 addi x15, x0, 1
 addi x17, x0, 4
 addi x16, x0, 0
-dma.config.ch0
-dma.config.ch1
+dma.config.ch0 x0
+dma.wait.ch0
+dma.config.ch1 x0
+dma.wait.ch1
 dma.wait.ch0
 dma.wait.ch1
 dma.load.ch0 x4, x7, x10
@@ -32,18 +35,14 @@ vload m12, 0(x1)
 delay 34
 vload m13, 32(x1)
 delay 34
-vmatpush.acc.bf16.mxu0 acc1, m12
-delay 32
-vmatpop.fp8.acc.mxu0 m0, acc1
-delay 32
+vpack.bf16.fp8 m0, m12, e0
+delay 66
 vload m12, 64(x1)
 delay 34
 vload m13, 96(x1)
 delay 34
-vmatpush.acc.bf16.mxu0 acc1, m12
-delay 32
-vmatpop.fp8.acc.mxu0 m1, acc1
-delay 32
+vpack.bf16.fp8 m1, m12, e0
+delay 66
 vli.all m4, -100
 delay 65
 vli.all m5, -100
@@ -72,10 +71,8 @@ vload m12, 0(x2)
 delay 34
 vload m13, 32(x2)
 delay 34
-vmatpush.acc.bf16.mxu0 acc1, m12
-delay 32
-vmatpop.fp8.acc.mxu0 m14, acc1
-delay 32
+vpack.bf16.fp8 m14, m12, e0
+delay 66
 vmatpush.weight.mxu0 w0, m14
 delay 32
 vmatmul.mxu0 acc0, m0, w0
@@ -84,10 +81,8 @@ vload m12, 64(x2)
 delay 34
 vload m13, 96(x2)
 delay 34
-vmatpush.acc.bf16.mxu0 acc1, m12
-delay 32
-vmatpop.fp8.acc.mxu0 m14, acc1
-delay 32
+vpack.bf16.fp8 m14, m12, e0
+delay 66
 vmatpush.weight.mxu0 w0, m14
 delay 32
 vmatmul.acc.mxu0 acc0, m1, w0
@@ -112,18 +107,14 @@ vsub.bf16 m28, m22, m26
 delay 66
 vexp.bf16 m28, m28
 delay 66
-vmatpush.acc.bf16.mxu0 acc1, m28
-delay 32
-vmatpop.fp8.acc.mxu0 m30, acc1
-delay 32
+vpack.bf16.fp8 m30, m28, e0
+delay 66
 vload m16, 0(x3)
 delay 34
 vload m17, 32(x3)
 delay 34
-vmatpush.acc.bf16.mxu0 acc1, m16
-delay 32
-vmatpop.fp8.acc.mxu0 m18, acc1
-delay 32
+vpack.bf16.fp8 m18, m16, e0
+delay 66
 vmatpush.weight.mxu0 w0, m18
 delay 32
 vmatmul.mxu0 acc0, m30, w0
@@ -136,10 +127,8 @@ vload m16, 64(x3)
 delay 34
 vload m17, 96(x3)
 delay 34
-vmatpush.acc.bf16.mxu0 acc1, m16
-delay 32
-vmatpop.fp8.acc.mxu0 m18, acc1
-delay 32
+vpack.bf16.fp8 m18, m16, e0
+delay 66
 vmatpush.weight.mxu0 w0, m18
 delay 32
 vmatmul.mxu0 acc0, m30, w0

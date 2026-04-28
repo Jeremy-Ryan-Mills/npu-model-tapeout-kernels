@@ -5,7 +5,7 @@ lui x4, 0x1
 addi x4, x4, -2048
 lui x5, 0x1
 addi x5, x5, -2048
-dma.config.ch0
+dma.config.ch0 x0
 dma.wait.ch0
 dma.load.ch0 x1, x3, x5
 vli.all m2, -1

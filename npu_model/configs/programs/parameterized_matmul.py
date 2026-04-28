@@ -30,8 +30,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 # ── fixed VMEM addresses ──────────────────────────────────────────────────
 VMEM_A = 0x2000
@@ -350,12 +351,7 @@ class ParameterizedMatmulProgram(Program):
     multiples of 32. Inputs stored in tiled DRAM layout (see _tile_matrix).
     """
 
-    instructions: List[Instruction[Any]] = make_matmul_instructions(
-        M=M, K=K, N=N,
-        dram_a=DRAM_A,
-        dram_b=DRAM_B,
-        dram_c=DRAM_C,
-    )
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_matmul.S')
 
     memory_regions: List[Tuple[int, torch.Tensor]] = [
         (DRAM_A, INPUT_A_TILED),
@@ -378,7 +374,7 @@ class ParameterizedMatmul32x32x32Program(Program):
     once and popped immediately with no vmatmul.acc.mxu0.
     """
 
-    instructions: List[Instruction[Any]] = _32_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_matmul32x32x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _32_regions
     golden_result: tuple[int, torch.Tensor] = _32_golden
 
@@ -396,7 +392,7 @@ class ParameterizedMatmul32x64x32Program(Program):
     SmolVLAMatmulKChainProgram but generated rather than hand-written.
     """
 
-    instructions: List[Instruction[Any]] = _kchain_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_matmul32x64x32.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _kchain_regions
     golden_result: tuple[int, torch.Tensor] = _kchain_golden
 
@@ -414,6 +410,6 @@ class ParameterizedMatmul64x32x96Program(Program):
     right sequence of DMA stores without overlap.
     """
 
-    instructions: List[Instruction[Any]] = _multi_insns
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_matmul64x32x96.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _multi_regions
     golden_result: tuple[int, torch.Tensor] = _multi_golden

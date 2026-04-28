@@ -57,8 +57,9 @@ from typing import Any, List, Tuple
 
 import torch
 
-from ...software import Instruction, Program
-from npu_model.isa import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs
+from npu_model.software.program import Program, ASM_FOLDER
+from npu_model.util.converter import load_asm
+from npu_model._compat_args import DmaArgs, MatrixArgs, ScalarArgs, VectorArgs, _MockInstruction as Instruction
 
 TILE = 32
 BF16 = 2
@@ -560,7 +561,7 @@ _fa_q64_k96  = _make_attn_program(Q_ROWS=64, K_SEQ=96,  seed=41)
 class ParameterizedFusedAttentionQ32K64Program(Program):
     """Flash attention: Q_ROWS=32, K_SEQ=64, HEAD_DIM=64."""
 
-    instructions: List[Instruction[Any]] = _fa_q32_k64[0]
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_attention_q32_k64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k64[1]
     golden_result: tuple[int, torch.Tensor] = _fa_q32_k64[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
@@ -569,7 +570,7 @@ class ParameterizedFusedAttentionQ32K64Program(Program):
 class ParameterizedFusedAttentionQ32K96Program(Program):
     """Flash attention: Q_ROWS=32, K_SEQ=96, HEAD_DIM=64 (3 K-tiles)."""
 
-    instructions: List[Instruction[Any]] = _fa_q32_k96[0]
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_attention_q32_k96.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k96[1]
     golden_result: tuple[int, torch.Tensor] = _fa_q32_k96[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
@@ -578,7 +579,7 @@ class ParameterizedFusedAttentionQ32K96Program(Program):
 class ParameterizedFusedAttentionQ32K128Program(Program):
     """Flash attention: Q_ROWS=32, K_SEQ=128, HEAD_DIM=64 (4 K-tiles)."""
 
-    instructions: List[Instruction[Any]] = _fa_q32_k128[0]
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_attention_q32_k128.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q32_k128[1]
     golden_result: tuple[int, torch.Tensor] = _fa_q32_k128[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
@@ -587,7 +588,7 @@ class ParameterizedFusedAttentionQ32K128Program(Program):
 class ParameterizedFusedAttentionQ64K64Program(Program):
     """Flash attention: Q_ROWS=64, K_SEQ=64, HEAD_DIM=64 (2 Q-blocks)."""
 
-    instructions: List[Instruction[Any]] = _fa_q64_k64[0]
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_attention_q64_k64.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k64[1]
     golden_result: tuple[int, torch.Tensor] = _fa_q64_k64[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
@@ -596,7 +597,7 @@ class ParameterizedFusedAttentionQ64K64Program(Program):
 class ParameterizedFusedAttentionQ64K96Program(Program):
     """Flash attention: Q_ROWS=64, K_SEQ=96, HEAD_DIM=64 (2 Q-blocks, 3 K-tiles)."""
 
-    instructions: List[Instruction[Any]] = _fa_q64_k96[0]
+    instructions: list[Instruction] = load_asm(ASM_FOLDER / 'parameterized_fused_attention_q64_k96.S')
     memory_regions: List[Tuple[int, torch.Tensor]] = _fa_q64_k96[1]
     golden_result: tuple[int, torch.Tensor] = _fa_q64_k96[2]
     kernel_tolerance: tuple[float, float] = (5e-2, 5e-2)
